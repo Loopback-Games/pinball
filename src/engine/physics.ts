@@ -63,7 +63,11 @@ export const SUBSTEP_HZ = 480;
 const SUBSTEP_DT = 1 / SUBSTEP_HZ;
 
 /** Maximum collision resolutions within a single substep. */
-const MAX_ITERATIONS = 6;
+const MAX_ITERATIONS = 8;
+
+/** Depenetration passes per substep, so pushing out of one wall into another
+ * still resolves. */
+const SEPARATION_PASSES = 2;
 
 /** Nudged back off a surface by this much, so the next sweep starts clear. */
 const SKIN = 0.05;
@@ -124,9 +128,17 @@ export class World {
     this.separate(ball, out);
 
     let remaining = h;
-    for (let i = 0; i < MAX_ITERATIONS && remaining > 1e-9; i += 1) {
+    let clear = false;
+    for (let i = 0; i < MAX_ITERATIONS; i += 1) {
+      if (remaining <= 1e-9) {
+        clear = true;
+        break;
+      }
       const hit = this.firstHit(ball, remaining);
-      if (!hit) break;
+      if (!hit) {
+        clear = true;
+        break;
+      }
       ball.pos = vec(
         ball.pos.x + ball.vel.x * hit.t,
         ball.pos.y + ball.vel.y * hit.t,
@@ -139,7 +151,10 @@ export class World {
         ball.pos.y + hit.normal.y * SKIN,
       );
     }
-    if (remaining > 0) {
+    // Only coast through the leftover time if the sweep proved the path is
+    // clear. A ball that used up its iterations is wedged in a corner, and
+    // moving it blindly is exactly how it ends up on the wrong side of a wall.
+    if (clear && remaining > 0) {
       ball.pos = vec(
         ball.pos.x + ball.vel.x * remaining,
         ball.pos.y + ball.vel.y * remaining,
@@ -160,6 +175,12 @@ export class World {
 
   /** Push the ball out of anything it is already inside and bounce it off. */
   private separate(ball: Ball, out: Collision[]): void {
+    for (let pass = 0; pass < SEPARATION_PASSES; pass += 1) {
+      this.separationPass(ball, out);
+    }
+  }
+
+  private separationPass(ball: Ball, out: Collision[]): void {
     for (const c of this.statics) {
       const contact = overlap(c, ball.pos, ball.radius);
       if (!contact) continue;

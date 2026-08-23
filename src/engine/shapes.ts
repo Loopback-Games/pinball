@@ -53,10 +53,13 @@ export interface CircleCollider extends Surface {
 }
 
 /**
- * A section of a circle. `facing: 'outer'` is a convex wall the ball bounces
- * off from outside; `facing: 'inner'` is a concave wall containing the ball.
- * Angles are in radians, measured with atan2, and the arc runs from `a0`
+ * A section of a circle, treated as a thin curved wall that is solid from both
+ * sides. Angles are in radians, measured with atan2, and the arc runs from `a0`
  * upwards through increasing angle to `a1`.
+ *
+ * Which side the ball bounces off is decided by where the ball actually is, not
+ * by a declared facing. The orbit guides have balls on both sides at once, so a
+ * single-sided arc would let one of them through.
  */
 export interface ArcCollider extends Surface {
   readonly kind: 'arc';
@@ -64,7 +67,6 @@ export interface ArcCollider extends Surface {
   radius: number;
   a0: number;
   a1: number;
-  facing: 'inner' | 'outer';
 }
 
 export type Collider = SegmentCollider | CircleCollider | ArcCollider;
@@ -135,10 +137,9 @@ export function arc(
   radius: number,
   a0: number,
   a1: number,
-  facing: 'inner' | 'outer',
   o: SurfaceOptions = {},
 ): ArcCollider {
-  return { ...surfaceDefaults(id, o), kind: 'arc', center, radius, a0, a1, facing };
+  return { ...surfaceDefaults(id, o), kind: 'arc', center, radius, a0, a1 };
 }
 
 const TAU = Math.PI * 2;
@@ -209,23 +210,19 @@ export function overlap(c: Collider, p: Vec2, r: number): Contact | null {
       const dy = p.y - c.center.y;
       const dist = Math.hypot(dx, dy);
       if (dist < 1e-9) return null;
+      // Signed distance from the wall itself, positive outside the circle.
+      const d = dist - c.radius;
+      if (Math.abs(d) >= r) return null;
       if (!arcContainsAngle(c, Math.atan2(dy, dx))) return null;
-      const n = vec(dx / dist, dy / dist);
-      if (c.facing === 'outer') {
-        const sum = c.radius + r;
-        if (dist >= sum) return null;
-        return {
-          normal: n,
-          point: vec(c.center.x + n.x * c.radius, c.center.y + n.y * c.radius),
-          depth: sum - dist,
-        };
-      }
-      const limit = c.radius - r;
-      if (dist <= limit) return null;
+      const side = d >= 0 ? 1 : -1;
+      const radial = vec(dx / dist, dy / dist);
       return {
-        normal: vec(-n.x, -n.y),
-        point: vec(c.center.x + n.x * c.radius, c.center.y + n.y * c.radius),
-        depth: dist - limit,
+        normal: vec(radial.x * side, radial.y * side),
+        point: vec(
+          c.center.x + radial.x * c.radius,
+          c.center.y + radial.y * c.radius,
+        ),
+        depth: r - Math.abs(d),
       };
     }
   }
@@ -379,18 +376,21 @@ function sweepArc(
   const a = v.x * v.x + v.y * v.y;
   if (a < 1e-12) return null;
 
-  const k = c.facing === 'outer' ? c.radius + r : c.radius - r;
+  // The ball approaches whichever face of the wall it is currently on.
+  const distSq = dx * dx + dy * dy;
+  const outside = distSq >= c.radius * c.radius;
+  const k = outside ? c.radius + r : c.radius - r;
   if (k <= 0) return null;
   const b = 2 * (dx * v.x + dy * v.y);
-  const cc = dx * dx + dy * dy - k * k;
+  const cc = distSq - k * k;
 
   let t: number | null;
-  if (c.facing === 'outer') {
-    if (cc < 0) return null;
-    if (b >= 0) return null;
+  if (outside) {
+    if (cc < 0) return null; // already within the band; overlap handles it
+    if (b >= 0) return null; // moving away
     t = firstRoot(a, b, cc, maxT);
   } else {
-    // Inside a containing wall: we want the crossing where the ball moves out.
+    // Inside: the contact is where the ball crosses outwards.
     if (cc > 0) return null;
     const disc = b * b - 4 * a * cc;
     if (disc < 0) return null;
@@ -406,7 +406,7 @@ function sweepArc(
 
   const nx = Math.cos(ang);
   const ny = Math.sin(ang);
-  const sign = c.facing === 'outer' ? 1 : -1;
+  const sign = outside ? 1 : -1;
   return {
     t,
     normal: vec(nx * sign, ny * sign),

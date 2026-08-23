@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Flipper } from '../src/engine/flipper.js';
 import { createBall, World, DEFAULT_WORLD } from '../src/engine/physics.js';
 import type { Collision } from '../src/engine/physics.js';
-import { circle, segment, segmentFlipped } from '../src/engine/shapes.js';
+import { arc, circle, segment, segmentFlipped } from '../src/engine/shapes.js';
 import { vec } from '../src/engine/vec2.js';
 
 /** A closed box with normals facing inward, for containment tests. */
@@ -154,5 +154,18 @@ describe('flippers', () => {
       world.substep(ball, h, events);
     }
     expect(ball.pos.y).toBeLessThan(420);
+  });
+});
+
+describe('containing arcs', () => {
+  it('ignores a ball that is nowhere near the surface', () => {
+    const world = new World({ ...DEFAULT_WORLD, gravity: 0, drag: 0 });
+    // A small cup at the origin, and a ball on the far side of the table. The
+    // ball is outside the cup's circle, but it is not touching the cup.
+    world.statics = [arc('cup', vec(60, 60), 36, 0, Math.PI * 2)];
+    const ball = createBall(vec(500, 700), 13.5);
+    run(world, ball, 0.2);
+    expect(ball.pos.x).toBeCloseTo(500, 3);
+    expect(ball.pos.y).toBeCloseTo(700, 3);
   });
 });
