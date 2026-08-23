@@ -30,6 +30,23 @@ jobs:
       - run: npm run typecheck
       - run: npm test
       - run: npm run build
+
+      # Drive the built game in a real browser. The unit tests cannot see the
+      # canvas, the input handling or the page boot, and a bug in any of those
+      # ships a blank screen with every test passing.
+      - run: npx playwright install --with-deps chromium
+      - name: Smoke test the built game
+        run: |
+          npx vite preview --port 4173 --strictPort &
+          npx wait-on -t 60000 http://localhost:4173/
+          node scripts/smoke.mjs http://localhost:4173/ screenshots
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        if: always()
+        with:
+          name: screenshots
+          path: screenshots
+          retention-days: 7
+
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
         with:

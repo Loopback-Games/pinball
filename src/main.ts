@@ -48,4 +48,6 @@ function frame(now: number): void {
 requestAnimationFrame(frame);
 
 // Expose the game for debugging without pulling in a dev-only bundle.
-Object.assign(globalThis, { pinball: game });
+Object.assign(globalThis, {
+  pinball: Object.assign(game, { audioContextState: () => audio.state() }),
+});

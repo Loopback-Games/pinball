@@ -41,6 +41,12 @@ export class Audio {
     }
   }
 
+  /** Diagnostic hook: what the browser thinks the audio context is doing. */
+  state(): string {
+    if (this.failed) return 'failed';
+    return this.ctx?.state ?? 'absent';
+  }
+
   play(name: SoundName, intensity: number): void {
     if (this.muted || this.failed) return;
     const ctx = this.ctx;

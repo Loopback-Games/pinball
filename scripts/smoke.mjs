@@ -58,6 +58,22 @@ for (const vp of VIEWPORTS) {
   }
   await page.screenshot({ path: `${outDir}/${vp.name}-later.png` });
 
+  // Frame rate with a ball in play, which is the case that matters.
+  const fps = await page.evaluate(async () => {
+    let frames = 0;
+    const start = performance.now();
+    await new Promise((resolve) => {
+      const tick = () => {
+        frames += 1;
+        if (performance.now() - start > 2000) resolve();
+        else requestAnimationFrame(tick);
+      };
+      requestAnimationFrame(tick);
+    });
+    return Math.round((frames * 1000) / (performance.now() - start));
+  });
+  if (fps < 45) problems.push(`[${vp.name}] only ${fps} fps with a ball in play`);
+
   const state = await page.evaluate(() => {
     const g = globalThis.pinball;
     return {
@@ -69,7 +85,7 @@ for (const vp of VIEWPORTS) {
         .map((b) => ({ mode: b.mode, x: Math.round(b.ball.pos.x), y: Math.round(b.ball.pos.y) })),
     };
   });
-  console.log(`${vp.name}: ${JSON.stringify(state)}`);
+  console.log(`${vp.name}: ${fps}fps ${JSON.stringify(state)}`);
 
   // A ball outside the table means the solver let one escape in a real run.
   for (const p of state.positions) {
@@ -79,6 +95,26 @@ for (const vp of VIEWPORTS) {
   }
   if (state.phase === 'attract') {
     problems.push(`[${vp.name}] game never started`);
+  }
+  await page.close();
+}
+
+// Audio has to survive the browser's autoplay policy: it may only start from a
+// real user gesture, and the game must stay playable if it never starts.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  page.on('pageerror', (e) => problems.push(`audio: pageerror: ${e.message}`));
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  await page.mouse.click(640, 500);
+  await page.waitForTimeout(600);
+  const audioState = await page.evaluate(() => {
+    const ctx = globalThis.pinball?.audioContextState?.();
+    return ctx ?? 'unknown';
+  });
+  console.log(`audio after a click: ${audioState}`);
+  if (audioState !== 'running') {
+    problems.push(`audio never started (state: ${audioState})`);
   }
   await page.close();
 }
