@@ -469,8 +469,9 @@ export class Game {
       return;
     }
     if (id === 'ramp-entry' && entry.mode === 'play') {
-      // Only a shot with real speed behind it makes the ramp.
-      if (ball.vel.y > -420) return;
+      // Only a shot with some speed behind it makes the ramp; a ball dribbling
+      // into the mouth rolls back out instead.
+      if (ball.vel.y > -300) return;
       entry.mode = 'rail';
       entry.railT = 0;
       entry.ball.active = false;

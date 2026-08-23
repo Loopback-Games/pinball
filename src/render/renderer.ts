@@ -182,9 +182,26 @@ export class Renderer {
       g.fill();
       g.restore();
     };
-    arrow(404, 604, 0, PALETTE.violet);
-    arrow(PLAY_CENTER, 462, 0, PALETTE.violet);
-    arrow(51, 614, 0, PALETTE.cyan);
+    arrow(404, 624, 0, PALETTE.violet);
+    arrow(table.saucer.center.x, table.saucer.center.y + 62, 0, PALETTE.violet);
+    arrow(51, 616, 0, PALETTE.cyan);
+
+    // Bases for the mission lamps, and the label above them.
+    g.save();
+    g.textAlign = 'center';
+    g.fillStyle = 'rgba(166, 123, 255, 0.55)';
+    g.font = '700 9px ui-monospace, Menlo, monospace';
+    g.fillText('RANK PROGRESS', 278, 578);
+    for (const p of table.missionLamps) {
+      g.beginPath();
+      g.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      g.fillStyle = 'rgba(8, 12, 26, 0.85)';
+      g.fill();
+      g.strokeStyle = 'rgba(166, 123, 255, 0.4)';
+      g.lineWidth = 1.5;
+      g.stroke();
+    }
+    g.restore();
 
     // Lane arrows pointing up the inlanes and outlanes.
     for (const x of [43, 81, PLAY_RIGHT - 43, PLAY_RIGHT - 81]) {
@@ -392,6 +409,23 @@ export class Renderer {
   }
 
   private drawInserts(ctx: CanvasRenderingContext2D, game: Game): void {
+    // Mission lamps: one lights per rank earned, so progress is visible on the
+    // playfield rather than only in the score panel.
+    for (const [i, p] of game.table.missionLamps.entries()) {
+      const done = i < game.missionsCompleted;
+      const current = i === game.missionsCompleted && game.activeMission >= 0;
+      if (!done && !current) continue;
+      ctx.save();
+      const color = done ? PALETTE.violet : PALETTE.amber;
+      ctx.fillStyle = color;
+      ctx.globalAlpha = done ? 0.95 : 0.5 + Math.sin(game.missionTimer * 6) * 0.3;
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
+      ctx.fill();
+      this.glow(ctx, p.x, p.y, 22, color, 0.5);
+      ctx.restore();
+    }
+
     for (const [i, p] of game.table.rollovers.entries()) {
       const lit = game.lamps.get(`rollover-${i}`) ?? 0;
       ctx.save();
@@ -609,91 +643,82 @@ export class Renderer {
     const path = game.table.rampPath;
     if (path.length < 2) return;
 
-    const trace = (offset: number, dy: number): void => {
-      ctx.beginPath();
-      for (let i = 0; i < path.length; i += 1) {
-        const p = path[i];
-        if (!p) continue;
+    /** Offset copy of the path, `d` units to its left, shifted down by `dy`. */
+    const side = (d: number, dy: number): Vec2[] =>
+      path.map((p, i) => {
         const prev = path[Math.max(0, i - 1)] ?? p;
         const next = path[Math.min(path.length - 1, i + 1)] ?? p;
         const tx = next.x - prev.x;
         const ty = next.y - prev.y;
         const len = Math.hypot(tx, ty) || 1;
-        const nx = (-ty / len) * offset;
-        const ny = (tx / len) * offset;
-        if (i === 0) ctx.moveTo(p.x + nx, p.y + ny + dy);
-        else ctx.lineTo(p.x + nx, p.y + ny + dy);
+        return { x: p.x + (-ty / len) * d, y: p.y + (tx / len) * d + dy };
+      });
+
+    const ribbon = (d: number, dy: number): void => {
+      const a = side(d, dy);
+      const b = side(-d, dy);
+      ctx.beginPath();
+      a.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      for (let i = b.length - 1; i >= 0; i -= 1) {
+        const p = b[i];
+        if (p) ctx.lineTo(p.x, p.y);
       }
+      ctx.closePath();
     };
 
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Support posts down to the playfield.
-    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
-    ctx.lineWidth = 3;
-    const postStride = Math.max(2, Math.round(path.length / 14));
-    for (let i = postStride; i < path.length - 1; i += postStride) {
-      const p = path[i];
-      if (!p) continue;
+    // Shadow cast on the playfield, well offset so the height is unmistakable.
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    ribbon(11, 20);
+    ctx.fill();
+
+    // The ramp surface: translucent plastic, brighter along its length.
+    const surface = ctx.createLinearGradient(0, 160, 0, 700);
+    surface.addColorStop(0, 'rgba(150, 205, 255, 0.30)');
+    surface.addColorStop(1, 'rgba(110, 160, 235, 0.16)');
+    ctx.fillStyle = surface;
+    ribbon(11, 0);
+    ctx.fill();
+
+    // Raised edges either side.
+    for (const d of [-11, 11]) {
+      const edge = side(d, 0);
       ctx.beginPath();
-      ctx.moveTo(p.x, p.y);
-      ctx.lineTo(p.x + 2, p.y + 12);
+      edge.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+      ctx.strokeStyle = 'rgba(20, 30, 52, 0.85)';
+      ctx.lineWidth = 4.5;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(198, 224, 255, 0.9)';
+      ctx.lineWidth = 1.8;
       ctx.stroke();
     }
 
-    // Shadow on the playfield beneath the rail.
-    ctx.strokeStyle = 'rgba(0,0,0,0.42)';
-    ctx.lineWidth = 7;
-    for (const off of [-7, 7]) {
-      trace(off, 12);
-      ctx.stroke();
-    }
+    // A highlight running down the middle of the surface.
+    ctx.beginPath();
+    path.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+    ctx.lineWidth = 5;
+    ctx.stroke();
 
-    // Cross ties between the two rails.
-    ctx.strokeStyle = 'rgba(150, 175, 215, 0.35)';
-    ctx.lineWidth = 2;
-    const tieStride = Math.max(1, Math.round(path.length / 34));
-    for (let i = 0; i < path.length - 1; i += tieStride) {
-      const a = path[i];
-      const b = path[Math.min(path.length - 1, i + tieStride)];
-      if (!a || !b) continue;
-      for (const f of [0.5]) {
-        const x = a.x + (b.x - a.x) * f;
-        const y = a.y + (b.y - a.y) * f;
-        const tx = b.x - a.x;
-        const ty = b.y - a.y;
-        const len = Math.hypot(tx, ty) || 1;
-        ctx.beginPath();
-        ctx.moveTo(x + (-ty / len) * 7, y + (tx / len) * 7);
-        ctx.lineTo(x - (-ty / len) * 7, y - (tx / len) * 7);
-        ctx.stroke();
-      }
-    }
-
-    // The rails themselves.
-    for (const pass of [
-      { width: 5, style: PALETTE.railDark },
-      { width: 2.5, style: PALETTE.railLight },
-    ]) {
-      ctx.strokeStyle = pass.style;
-      ctx.lineWidth = pass.width;
-      for (const off of [-7, 7]) {
-        trace(off, 0);
-        ctx.stroke();
-      }
-    }
-
-    // A lit entry mouth, so the shot is obvious.
+    // Entry mouth and exit flare, so both ends read as openings.
     const entry = path[0];
     if (entry) {
-      this.glow(ctx, entry.x, entry.y, 34, PALETTE.violet, 0.4);
+      this.glow(ctx, entry.x, entry.y, 36, PALETTE.violet, 0.45);
       ctx.strokeStyle = PALETTE.violet;
       ctx.lineWidth = 3;
       ctx.beginPath();
-      ctx.arc(entry.x, entry.y, 17, 0, Math.PI * 2);
+      ctx.arc(entry.x, entry.y, 16, 0, Math.PI * 2);
       ctx.stroke();
+    }
+    const exit = path[path.length - 1];
+    if (exit) {
+      ctx.fillStyle = 'rgba(198, 224, 255, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(exit.x, exit.y, 13, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
     }
     ctx.restore();
   }

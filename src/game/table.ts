@@ -90,7 +90,7 @@ const WALL: SurfaceOptions = { restitution: 0.45, friction: 0.04 };
  * friction near zero. Otherwise an orbit shot arrives at the top with almost
  * nothing left.
  */
-const RAIL: SurfaceOptions = { restitution: 0.62, friction: 0.005 };
+const RAIL: SurfaceOptions = { restitution: 0.72, friction: 0.002 };
 const RUBBER: SurfaceOptions = { restitution: 0.62, friction: 0.04, radius: 5 };
 
 /**
@@ -152,6 +152,8 @@ export interface Table {
   /** Path a captured ball follows along the habitrail, entry first. */
   rampPath: Vec2[];
   rollovers: Vec2[];
+  /** Insert lamps showing how many missions have been completed. */
+  missionLamps: Vec2[];
   plunger: { x: number; y: number };
   /** The gate at the top of the shooter lane, held for rendering. */
   laneGate: Collider;
@@ -272,16 +274,16 @@ export function buildTable(): Table {
 
   const dropTargets = bank(
     'drop',
-    vec(146, 520),
-    vec(204, 446),
+    vec(112, 528),
+    vec(170, 452),
     3,
     'left',
     { restitution: 0.3, friction: 0.1, radius: 4 },
   );
   const standupTargets = bank(
     'target',
-    mirrorPoint(vec(146, 520)),
-    mirrorPoint(vec(204, 446)),
+    mirrorPoint(vec(112, 528)),
+    mirrorPoint(vec(170, 452)),
     3,
     'right',
     { restitution: 0.45, friction: 0.1, radius: 4 },
@@ -290,7 +292,7 @@ export function buildTable(): Table {
   // flipper, and they leave a gap wide enough for the saucer shot.
   // Sloped outward, so a ball that lands on one rolls off towards the
   // slingshot instead of sitting on it like a shelf.
-  for (const [i, x] of [228, MIRROR - 228].entries()) {
+  for (const [i, x] of [200, MIRROR - 200].entries()) {
     const id = `target-${3 + i}`;
     const outward = i === 0 ? -1 : 1;
     const a = vec(x - 18 * outward, 640);
@@ -309,8 +311,11 @@ export function buildTable(): Table {
 
   // A cup open at the bottom: the ball is shot up into it and cannot roll out
   // on its own, so the rule layer decides when to kick it free.
-  const saucerCenter = vec(PLAY_CENTER, 402);
-  const saucerRadius = 34;
+  // Offset from the centre line on purpose: sitting dead centre it intercepted
+  // every shot heading for the bumpers, which made the most important feature
+  // on the table almost unreachable.
+  const saucerCenter = vec(240, 392);
+  const saucerRadius = 30;
   colliders.push(
     arc('saucer-wall', saucerCenter, saucerRadius, deg(135), deg(405), {
       restitution: 0.12,
@@ -323,12 +328,12 @@ export function buildTable(): Table {
 
   // Entry funnel on the right, feeding a wire ramp that returns the ball to the
   // left inlane. The ramp itself is a path the rule layer walks the ball along.
-  const rampEntry = vec(404, 556);
+  const rampEntry = vec(404, 566);
   colliders.push(
-    ...polyline('guide', [vec(370, 610), vec(382, 536)], 'right', RAIL),
-    ...polyline('guide', [vec(438, 610), vec(426, 536)], 'left', RAIL),
+    ...polyline('guide', [vec(356, 632), vec(380, 534)], 'right', RAIL),
+    ...polyline('guide', [vec(452, 632), vec(428, 534)], 'left', RAIL),
   );
-  sensors.push(sensorCircle('ramp-entry', rampEntry, 22));
+  sensors.push(sensorCircle('ramp-entry', rampEntry, 24));
   // The habitrail is raised above the playfield, so it is allowed to cross
   // over the bumpers and guides. It is drawn last, with a shadow, to read that
   // way.
@@ -336,27 +341,29 @@ export function buildTable(): Table {
   // it never hides a shot the player needs to see.
   const rampPath: Vec2[] = smoothPath([
     rampEntry,
-    vec(438, 494),
+    vec(436, 496),
     vec(444, 424),
-    vec(410, 352),
-    vec(338, 308),
-    vec(250, 300),
-    vec(172, 330),
-    vec(124, 392),
+    vec(416, 344),
+    vec(346, 292),
+    vec(250, 282),
+    vec(166, 316),
+    vec(118, 388),
     vec(100, 470),
     vec(90, 556),
     vec(86, 620),
-    vec(84, 664),
+    vec(82, 676),
   ]);
 
   /* --- Posts ------------------------------------------------------------ */
 
+  // Posts shape the lanes; none of them may stand in one. Anything on the
+  // centre line blocks the saucer shot, and anything near x=404 below y=620
+  // blocks the ramp mouth, so both corridors are deliberately left clear.
   const posts: BumperSpec[] = [
-    { id: 'post', center: vec(150, 624), radius: 9 },
-    { id: 'post', center: mirrorPoint(vec(150, 624)), radius: 9 },
-    { id: 'post', center: vec(PLAY_CENTER, 540), radius: 9 },
-    { id: 'post', center: vec(196, 386), radius: 8 },
-    { id: 'post', center: mirrorPoint(vec(196, 386)), radius: 8 },
+    { id: 'post', center: vec(148, 606), radius: 9 },
+    { id: 'post', center: vec(470, 556), radius: 9 },
+    { id: 'post', center: vec(188, 316), radius: 8 },
+    { id: 'post', center: vec(370, 316), radius: 8 },
   ];
   for (const p of posts) {
     colliders.push(circle(p.id, p.center, p.radius, { restitution: 0.7, radius: 0 }));
@@ -454,15 +461,21 @@ export function buildTable(): Table {
     sensorRect('inlane-left', 64, 820, 34, 60),
     sensorRect('inlane-right', MIRROR - 98, 820, 34, 60),
     sensorRect('lane-exit', LANE_LEFT, LANE_TOP - 30, LANE_RIGHT - LANE_LEFT, 30),
-    sensorRect('spinner', PLAY_LEFT + 4, 556, 48, 30),
+    sensorRect('spinner', PLAY_LEFT + 2, 548, 54, 40),
+  );
+
+  // Sat on the orbit path itself, at the radius a ball actually rides, rather
+  // than at the very top of the dome where nothing passes.
+  const missionLamps: Vec2[] = [0, 1, 2, 3, 4].map((i) =>
+    vec(220 + i * 29, 596),
   );
 
   const rollovers: Vec2[] = [
-    vec(238, 58),
-    vec(300, 42),
-    vec(362, 58),
+    vec(300 + Math.cos(deg(255)) * 235, 300 + Math.sin(deg(255)) * 235),
+    vec(300, 300 - 235),
+    vec(300 + Math.cos(deg(285)) * 235, 300 + Math.sin(deg(285)) * 235),
   ];
-  rollovers.forEach((p, i) => sensors.push(sensorCircle(`rollover-${i}`, p, 22)));
+  rollovers.forEach((p, i) => sensors.push(sensorCircle(`rollover-${i}`, p, 27)));
 
   return {
     colliders,
@@ -478,6 +491,7 @@ export function buildTable(): Table {
     saucer: { center: saucerCenter, radius: saucerRadius },
     rampPath,
     rollovers,
+    missionLamps,
     plunger: { x: LANE_CENTER, y: LANE_FLOOR - BALL_RADIUS - 2 },
     laneGate,
   };
