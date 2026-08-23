@@ -13,5 +13,9 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/**/*.test.ts'],
+    // The containment fuzz and shot-reachability suites each run thousands of
+    // seconds of simulated play. They take a couple of seconds on a developer
+    // machine and rather longer on a shared CI runner.
+    testTimeout: 60_000,
   },
 });
