@@ -308,16 +308,30 @@ export class Renderer {
       }
     }
 
-    // The lane gate, in brass, following the collider it represents.
-    const gate = table.laneGate;
-    if (gate.kind === 'segment') {
-      g.strokeStyle = PALETTE.amber;
-      g.lineWidth = 3;
+    // Every one-way gate, in brass, drawn from the collider itself so a gate
+    // can never exist in the physics without appearing on the playfield.
+    for (const c of table.colliders) {
+      if (c.id !== 'gate' || c.kind !== 'segment') continue;
       g.lineCap = 'round';
+      g.strokeStyle = 'rgba(0,0,0,0.5)';
+      g.lineWidth = 6;
       g.beginPath();
-      g.moveTo(gate.a.x, gate.a.y);
-      g.lineTo(gate.b.x, gate.b.y);
+      g.moveTo(c.a.x, c.a.y + 2);
+      g.lineTo(c.b.x, c.b.y + 2);
       g.stroke();
+      g.strokeStyle = PALETTE.amber;
+      g.lineWidth = 3.5;
+      g.beginPath();
+      g.moveTo(c.a.x, c.a.y);
+      g.lineTo(c.b.x, c.b.y);
+      g.stroke();
+      // Hinge pips, so it reads as a gate rather than a wall.
+      g.fillStyle = PALETTE.railLight;
+      for (const end of [c.a, c.b]) {
+        g.beginPath();
+        g.arc(end.x, end.y, 3, 0, Math.PI * 2);
+        g.fill();
+      }
     }
 
     // Saucer: a kickout hole with a lit collar, so it reads as a target rather
@@ -637,7 +651,7 @@ export class Renderer {
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(LANE_CENTER, topY);
-    ctx.lineTo(LANE_CENTER, LANE_FLOOR + 26);
+    ctx.lineTo(LANE_CENTER, LANE_FLOOR + 8);
     ctx.stroke();
     ctx.fillStyle = game.plungerPower > 0 ? PALETTE.amber : PALETTE.railLight;
     ctx.beginPath();
