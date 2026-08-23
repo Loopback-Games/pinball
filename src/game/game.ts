@@ -7,7 +7,10 @@ import type { Table } from './table.js';
 import {
   BALL_RADIUS,
   DOME_CENTER,
+  LANE_TOP,
+  PLUNGER_TRAVEL,
   DOME_RADIUS,
+  LANE_LEFT,
   LANE_RIGHT,
   PLAY_LEFT,
   TABLE_H,
@@ -82,6 +85,10 @@ interface BallEntry {
   /** Counts down while held in the saucer, or up while riding the rail. */
   timer: number;
   railT: number;
+  /** Where the ball was when the confinement check last reset. */
+  anchor: Vec2;
+  /** Seconds the ball has stayed within `CONFINED_RADIUS` of `anchor`. */
+  confinedTime: number;
 }
 
 /** Message shown on the display, with the time it has left. */
@@ -92,6 +99,14 @@ interface Banner {
 }
 
 const MAX_BALLS = 3;
+
+/**
+ * A ball that never leaves a small patch is wedged, even if it is bouncing
+ * hard enough that its speed never looks like it has stopped. That happens in
+ * pockets between a target and a guide, where it can rattle indefinitely.
+ */
+const CONFINED_RADIUS = 70;
+const CONFINED_SECONDS = 9;
 
 export class Game {
   readonly table: Table;
@@ -161,7 +176,14 @@ export class Game {
     for (let i = 0; i < MAX_BALLS; i += 1) {
       const ball = createBall(vec(this.table.plunger.x, this.table.plunger.y), BALL_RADIUS);
       ball.active = false;
-      this.entries.push({ ball, mode: 'idle', timer: 0, railT: 0 });
+      this.entries.push({
+        ball,
+        mode: 'idle',
+        timer: 0,
+        railT: 0,
+        anchor: ball.pos,
+        confinedTime: 0,
+      });
     }
     this.highScore = readHighScore();
   }
@@ -221,6 +243,7 @@ export class Game {
     if (!entry) return;
     entry.mode = 'lane';
     entry.timer = 0;
+    entry.confinedTime = 0;
     entry.ball.active = false;
     entry.ball.pos = vec(this.table.plunger.x, this.table.plunger.y);
     entry.ball.vel = vec(0, 0);
@@ -304,7 +327,7 @@ export class Game {
     // Hold the ball on the plunger tip while it is drawn back.
     waiting.ball.pos = vec(
       this.table.plunger.x,
-      this.table.plunger.y + this.plungerPower * 46,
+      this.table.plunger.y + this.plungerPower * PLUNGER_TRAVEL,
     );
     waiting.ball.vel = vec(0, 0);
 
@@ -319,7 +342,9 @@ export class Game {
     const power = Math.max(this.plungerPower, 0.28);
     waiting.mode = 'play';
     waiting.ball.active = true;
-    waiting.ball.vel = vec(0, -(1500 + power * 1700));
+    // Enough to clear the gate at the lowest setting, and not so much at the
+    // highest that the ball flies over the whole dome and down the far outlane.
+    waiting.ball.vel = vec(0, -(1500 + power * 500));
     this.plungerHeld = false;
     this.plungerPower = 0;
     this.phase = 'playing';
@@ -427,11 +452,14 @@ export class Game {
       this.award(SCORE.standupTarget, c.point, 'target');
       this.onSound('target', 0.6);
       this.bonusUnits += 1;
+      // Mission progress counts every hit. Counting only targets not yet in
+      // the bank set meant a ball rattling between two of them never advanced
+      // the mission, because the set only clears once all five are collected.
+      if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'lock') {
+        this.advanceMission(1);
+      }
       if (!this.standupsHit.has(id)) {
         this.standupsHit.add(id);
-        if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'lock') {
-          this.advanceMission(1);
-        }
         if (this.standupsHit.size === this.table.standupTargets.length) {
           this.award(SCORE.standupBankComplete, c.point, 'complete');
           this.onSound('complete', 1);
@@ -643,6 +671,37 @@ export class Game {
     for (const e of this.entries) {
       if (e.mode !== 'play') continue;
       const p = e.ball.pos;
+
+      // A ball that has dribbled back into the shooter lane goes back on the
+      // plunger, exactly as it would on a real machine, rather than sitting
+      // there with no way for the player to move it. The speed test matters:
+      // without it this fires on the launch frame and the ball never leaves.
+      const settled = Math.hypot(e.ball.vel.x, e.ball.vel.y) < 300;
+      if (settled && p.x > LANE_LEFT + BALL_RADIUS && p.y > LANE_TOP + 60) {
+        e.mode = 'lane';
+        e.ball.active = false;
+        e.ball.vel = vec(0, 0);
+        e.confinedTime = 0;
+        this.phase = 'ready';
+        this.plungerPower = 0;
+        continue;
+      }
+
+      if (distance(p, e.anchor) > CONFINED_RADIUS) {
+        e.anchor = p;
+        e.confinedTime = 0;
+      } else {
+        e.confinedTime += dt;
+      }
+      if (e.confinedTime > CONFINED_SECONDS && !this.cradled(p)) {
+        // Throw it back up the table rather than nudging it, so it leaves the
+        // pocket it is caught in instead of settling straight back into it.
+        e.ball.vel = vec((Math.random() - 0.5) * 900, -1400);
+        e.confinedTime = 0;
+        e.anchor = p;
+        e.ball.idleTime = 0;
+      }
+
       // The dome only closes the top of the table; below its centre line the
       // playfield is a rectangle, so the radial check applies up there only.
       const offTable =
@@ -657,12 +716,23 @@ export class Game {
         e.ball.idleTime = 0;
         continue;
       }
-      if (e.ball.idleTime > 6) {
+      // A ball held still on a raised flipper is a cradle, which is a skill,
+      // not a fault. Only shove balls that nothing is deliberately holding.
+      if (e.ball.idleTime > 6 && !this.cradled(p)) {
         e.ball.vel = vec((Math.random() - 0.5) * 600, -500);
         e.ball.idleTime = 0;
       }
       void dt;
     }
+  }
+
+  /** True if the ball is resting against a flipper the player is holding up. */
+  private cradled(p: Vec2): boolean {
+    for (const f of this.table.flippers) {
+      if (!f.pressed) continue;
+      if (distance(p, f.pivot) < f.length + BALL_RADIUS + 8) return true;
+    }
+    return false;
   }
 
   private drainBall(entry: BallEntry): void {

@@ -3,6 +3,7 @@ import { Game, noIntents } from '../src/game/game.js';
 import type { Intents } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
 import { BALLS_PER_GAME, TILT_LIMIT } from '../src/game/rules.js';
+import { BALL_RADIUS, LANE_CENTER, LANE_FLOOR } from '../src/game/table.js';
 
 /** Run the game forward at a steady 60 frames per second. */
 function run(game: Game, seconds: number, intents: Intents = noIntents()): void {
@@ -134,5 +135,60 @@ describe('missions', () => {
     game.missionTimer = 0.1;
     run(game, 0.5);
     expect(game.activeMission).toBe(-1);
+  });
+});
+
+describe('the shooter lane', () => {
+  it('launches harder the further the plunger is drawn', () => {
+    const speeds: number[] = [];
+    for (const hold of [0.05, 0.9]) {
+      const game = new Game();
+      game.startGame();
+      run(game, hold, { ...noIntents(), plunger: true });
+      run(game, 1 / 30, noIntents());
+      speeds.push(-(game.balls[0]?.ball.vel.y ?? 0));
+    }
+    const [soft, hard] = speeds;
+    expect(soft).toBeGreaterThan(0);
+    // The plunger drove the ball through the lane floor and out of the world,
+    // where a fixed-speed recovery relaunched it, so pull made no difference.
+    expect(hard).toBeGreaterThan((soft ?? 0) + 200);
+  });
+
+  it('never pushes the ball through the lane floor', () => {
+    const game = new Game();
+    game.startGame();
+    run(game, 2, { ...noIntents(), plunger: true });
+    const ball = game.balls[0]?.ball;
+    expect(ball).toBeDefined();
+    expect(ball!.pos.y).toBeLessThan(LANE_FLOOR - BALL_RADIUS);
+  });
+
+  it('puts a ball that dribbles back into the lane onto the plunger', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    // A weak launch that falls back down the lane must not strand the ball.
+    placeBall(game, LANE_CENTER, 500, 0, 60);
+    run(game, 4);
+    expect(game.balls[0]?.mode).toBe('lane');
+    expect(game.phase).toBe('ready');
+  });
+
+  it('frees a ball that gets wedged instead of leaving it there', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    placeBall(game, 300, 320, 0, 0);
+    // Pin it in place the way a pocket would, then let the game notice.
+    for (let i = 0; i < 60 * 12; i += 1) {
+      if (i < 60 * 10) {
+        const ball = game.balls[0]?.ball;
+        if (ball) ball.vel = vec(0, 0);
+      }
+      game.update(1 / 60, noIntents());
+    }
+    const moved = game.balls[0]?.ball.pos.y ?? 320;
+    expect(moved).not.toBe(320);
   });
 });

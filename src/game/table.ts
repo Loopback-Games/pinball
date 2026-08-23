@@ -37,6 +37,16 @@ export const DOME_RADIUS = 276;
 
 export const BALL_RADIUS = 13.5;
 
+/**
+ * How far the plunger draws back, in table units.
+ *
+ * The ball rests on the extended plunger tip and travels down with it, so its
+ * resting position must leave this much room above the lane floor. Get it wrong
+ * and a fully drawn plunger pushes the ball through the floor and out of the
+ * world.
+ */
+export const PLUNGER_TRAVEL = 46;
+
 /** Everything below this line, inside the play area, is lost. */
 export const DRAIN_Y = 958;
 
@@ -193,7 +203,9 @@ export function buildTable(): Table {
   // The shooter lane divider doubles as the right edge of the play area, and
   // gets the mirrored apron on its playfield side.
   colliders.push(
-    ...polyline('wall', [vec(LANE_LEFT, LANE_FLOOR), vec(LANE_LEFT, LANE_TOP)], 'right'),
+    // The divider stops below the gate so it cannot catch a ball rolling off
+    // it: poking up through the gate turns that junction into a pocket.
+    ...polyline('wall', [vec(LANE_LEFT, LANE_FLOOR), vec(LANE_LEFT, LANE_TOP + 18)], 'right'),
     ...polyline('wall', [vec(LANE_LEFT, 898), vec(MIRROR - 96, 972)], 'left'),
   );
 
@@ -209,11 +221,15 @@ export function buildTable(): Table {
   // One-way gate at the top of the shooter lane. Its normal faces up, so it
   // only exists for a ball coming down from the dome: a launched ball passes
   // straight through, and nothing ever falls back into the lane.
+  //
+  // It slopes down towards the playfield on purpose. Level, it is a ledge in
+  // the middle of the dome, and a weak launch leaves the ball parked on top of
+  // it with nowhere to go.
   const laneGate = segment(
     'gate',
-    vec(LANE_LEFT, LANE_TOP),
-    vec(LANE_RIGHT, LANE_TOP),
-    { restitution: 0.2, oneWay: true },
+    vec(LANE_LEFT - 12, LANE_TOP + 12),
+    vec(LANE_RIGHT, LANE_TOP - 14),
+    { restitution: 0.2, oneWay: true, radius: 2 },
   );
   colliders.push(laneGate);
 
@@ -222,12 +238,34 @@ export function buildTable(): Table {
   // Two arcs inside the dome forming the orbit lanes. A ball with enough speed
   // rides the channel between guide and dome all the way over the top.
   colliders.push(
+    // The gap between the two guides sits above the bumper nest: a fast orbit
+    // carries across it and round, a slower one drops into the bumpers.
     arc('guide', DOME_CENTER, 222, deg(180), deg(252), RAIL),
-    arc('guide', DOME_CENTER, 222, deg(288), deg(360), RAIL),
+    // Stops short of the lane gate on purpose. Run down to 360 degrees it
+    // ends level with the gate and the divider, and the three of them form a
+    // pocket that catches a weakly launched ball.
+    arc('guide', DOME_CENTER, 222, deg(288), deg(346), RAIL),
   );
 
   // Straight continuations that turn each guide into a lane wall lower down.
   colliders.push(...polyline('guide', [vec(78, LANE_TOP), vec(78, 566)], 'left', RAIL));
+
+  // A one-way gate across the foot of the left orbit lane. A ball shot up the
+  // lane passes straight through it; a ball returning down the orbit is caught
+  // and fed into the playfield. Without it the lane is an uninterrupted chute
+  // from the top of the dome into the outlane, and every orbit drains.
+  colliders.push(
+    segment('gate', vec(PLAY_LEFT, 598), vec(96, 668), {
+      restitution: 0.45,
+      friction: 0.02,
+      oneWay: true,
+      radius: 3,
+    }),
+  );
+
+  // Orbit return. Without it the right-hand channel is a clear run from the
+  // top of the table into the outlane, and every launch drains.
+  colliders.push(...polyline('guide', [vec(LANE_LEFT, 424), vec(468, 502)], 'left', RAIL));
 
   /* --- Pop bumpers ---------------------------------------------------- */
 
@@ -315,14 +353,16 @@ export function buildTable(): Table {
   // every shot heading for the bumpers, which made the most important feature
   // on the table almost unreachable.
   const saucerCenter = vec(240, 392);
-  const saucerRadius = 30;
+  const saucerRadius = 34;
   colliders.push(
-    arc('saucer-wall', saucerCenter, saucerRadius, deg(135), deg(405), {
+    // A 120 degree mouth at the bottom. Narrower than this and the shot that
+    // gates every mission on the table is close to unmakeable.
+    arc('saucer-wall', saucerCenter, saucerRadius, deg(150), deg(390), {
       restitution: 0.12,
       friction: 0.5,
     }),
   );
-  sensors.push(sensorCircle('saucer', saucerCenter, 20));
+  sensors.push(sensorCircle('saucer', saucerCenter, 23));
 
   /* --- Habitrail ramp --------------------------------------------------- */
 
@@ -492,7 +532,10 @@ export function buildTable(): Table {
     rampPath,
     rollovers,
     missionLamps,
-    plunger: { x: LANE_CENTER, y: LANE_FLOOR - BALL_RADIUS - 2 },
+    plunger: {
+      x: LANE_CENTER,
+      y: LANE_FLOOR - BALL_RADIUS - 2 - PLUNGER_TRAVEL,
+    },
     laneGate,
   };
 }

@@ -6,8 +6,8 @@ import {
   DOME_CENTER,
   LANE_CENTER,
   LANE_FLOOR,
-  LANE_LEFT,
   LANE_RIGHT,
+  PLUNGER_TRAVEL,
   PLAY_CENTER,
   PLAY_LEFT,
   PLAY_RIGHT,
@@ -69,11 +69,20 @@ export class Renderer {
     const panelWidth = sidePanel ? Math.min(320, cssWidth * 0.3) : 0;
     const topPanel = sidePanel ? 0 : Math.min(104, cssHeight * 0.12);
 
-    const availW = cssWidth - panelWidth - 16;
+    const gap = sidePanel ? 20 : 0;
+    const availW = cssWidth - panelWidth - gap - 16;
     const availH = cssHeight - topPanel - 16;
     const scale = Math.min(availW / TABLE_W, availH / TABLE_H);
 
+    const tableW = TABLE_W * scale;
     const tableH = TABLE_H * scale;
+
+    // Keep the score panel beside the table rather than pinned to the window
+    // edge: the pair is centred as one group, so they read as one machine.
+    const offsetX = sidePanel
+      ? (cssWidth - (panelWidth + gap + tableW)) / 2 + panelWidth + gap
+      : (cssWidth - tableW) / 2;
+
     // Portrait screens are taller than the table's aspect ratio allows, so the
     // slack goes above it: the flippers stay in easy thumb reach at the bottom
     // and the score gets the room it frees up.
@@ -83,10 +92,16 @@ export class Renderer {
 
     this.layout = {
       scale,
-      offsetX: panelWidth + (availW - TABLE_W * scale) / 2 + 8,
+      offsetX,
       offsetY,
       hud: sidePanel
-        ? { x: 12, y: 16, w: panelWidth - 20, h: cssHeight - 32, vertical: true }
+        ? {
+            x: offsetX - gap - panelWidth,
+            y: offsetY,
+            w: panelWidth,
+            h: tableH,
+            vertical: true,
+          }
         : { x: 14, y: 10, w: cssWidth - 28, h: Math.max(70, offsetY - 18), vertical: false },
     };
 
@@ -293,13 +308,17 @@ export class Renderer {
       }
     }
 
-    // The lane gate, in brass.
-    g.strokeStyle = PALETTE.amber;
-    g.lineWidth = 3;
-    g.beginPath();
-    g.moveTo(LANE_LEFT + 3, 300);
-    g.lineTo(LANE_RIGHT - 3, 300);
-    g.stroke();
+    // The lane gate, in brass, following the collider it represents.
+    const gate = table.laneGate;
+    if (gate.kind === 'segment') {
+      g.strokeStyle = PALETTE.amber;
+      g.lineWidth = 3;
+      g.lineCap = 'round';
+      g.beginPath();
+      g.moveTo(gate.a.x, gate.a.y);
+      g.lineTo(gate.b.x, gate.b.y);
+      g.stroke();
+    }
 
     // Saucer: a kickout hole with a lit collar, so it reads as a target rather
     // than a smudge on the playfield.
@@ -609,8 +628,9 @@ export class Renderer {
   }
 
   private drawPlunger(ctx: CanvasRenderingContext2D, game: Game): void {
-    const pull = game.plungerPower * 46;
-    const topY = LANE_FLOOR - 10 + pull;
+    // The tip sits just under the ball wherever the pull has taken it.
+    const topY =
+      game.table.plunger.y + game.plungerPower * PLUNGER_TRAVEL + BALL_RADIUS + 2;
     ctx.save();
     ctx.strokeStyle = PALETTE.railMid;
     ctx.lineWidth = 9;
@@ -859,12 +879,22 @@ export class Renderer {
       ctx.fillStyle = PALETTE.textDim;
       ctx.font = mono(11);
       ctx.fillText('HIGH', x, y);
-      ctx.fillText('BALL', x + 130, y);
       y += 16;
       ctx.fillStyle = PALETTE.text;
       ctx.font = mono(16);
       ctx.fillText(game.highScore.toLocaleString(), x, y);
-      ctx.fillText(`${game.ballNumber} / ${game.ballsRemaining}`, x + 130, y);
+      y += 30;
+
+      ctx.fillStyle = PALETTE.textDim;
+      ctx.font = mono(11);
+      ctx.fillText(`BALL ${game.ballNumber}`, x, y);
+      for (let i = 0; i < 5; i += 1) {
+        ctx.beginPath();
+        ctx.arc(x + 82 + i * 15, y + 5, 4.5, 0, Math.PI * 2);
+        ctx.fillStyle =
+          i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+        ctx.fill();
+      }
       y += 34;
 
       ctx.fillStyle = PALETTE.textDim;
@@ -883,7 +913,8 @@ export class Renderer {
       y += 30;
 
       y = this.drawMissionPanel(ctx, game, x, y, hud.w - 36, mono);
-      this.drawControls(ctx, x, hud.y + hud.h - 132, mono);
+      this.drawMissionList(ctx, game, x, y + 10, mono);
+      this.drawControls(ctx, x, hud.y + hud.h - 108, mono);
     } else {
       this.drawBackglass(ctx, game, mono);
     }
@@ -1018,6 +1049,35 @@ export class Renderer {
     return barY + 32;
   }
 
+  /** The rank ladder, with everything earned so far ticked off. */
+  private drawMissionList(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    x: number,
+    y: number,
+    mono: (size: number, weight?: number) => string,
+  ): void {
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = mono(11);
+    ctx.fillText('MISSIONS', x, y);
+    MISSIONS.forEach((spec, i) => {
+      const row = y + 20 + i * 22;
+      const done = i < game.missionsCompleted;
+      const running = i === game.activeMission;
+      ctx.beginPath();
+      ctx.arc(x + 5, row + 5, 5, 0, Math.PI * 2);
+      ctx.fillStyle = done
+        ? PALETTE.violet
+        : running
+          ? PALETTE.amber
+          : 'rgba(255,255,255,0.14)';
+      ctx.fill();
+      ctx.fillStyle = done || running ? PALETTE.text : PALETTE.textDim;
+      ctx.font = mono(12, done || running ? 700 : 500);
+      ctx.fillText(spec.name, x + 18, row);
+    });
+  }
+
   private drawControls(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -1073,7 +1133,7 @@ export class Renderer {
     const cy = offsetY + 430 * scale;
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(4, 8, 20, 0.72)';
+    ctx.fillStyle = 'rgba(3, 6, 16, 0.94)';
     roundRect(
       ctx,
       offsetX + (PLAY_LEFT + 20) * scale,
