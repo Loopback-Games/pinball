@@ -38,9 +38,48 @@ export const DOME_RADIUS = 276;
 export const BALL_RADIUS = 13.5;
 
 /** Everything below this line, inside the play area, is lost. */
-export const DRAIN_Y = 938;
+export const DRAIN_Y = 958;
 
 const deg = (d: number): number => (d * Math.PI) / 180;
+
+/**
+ * Sample a Catmull-Rom spline through `points`, producing a dense polyline.
+ *
+ * The habitrail is authored as a handful of control points; drawing or walking
+ * a ball along those directly shows every kink. Sampling a spline through them
+ * gives a curve that looks and feels like bent wire.
+ */
+function smoothPath(points: readonly Vec2[], perSegment = 10): Vec2[] {
+  if (points.length < 3) return [...points];
+  const out: Vec2[] = [];
+  for (let i = 0; i < points.length - 1; i += 1) {
+    const p0 = points[Math.max(0, i - 1)]!;
+    const p1 = points[i]!;
+    const p2 = points[i + 1]!;
+    const p3 = points[Math.min(points.length - 1, i + 2)]!;
+    for (let j = 0; j < perSegment; j += 1) {
+      const t = j / perSegment;
+      const t2 = t * t;
+      const t3 = t2 * t;
+      out.push(
+        vec(
+          0.5 *
+            (2 * p1.x +
+              (-p0.x + p2.x) * t +
+              (2 * p0.x - 5 * p1.x + 4 * p2.x - p3.x) * t2 +
+              (-p0.x + 3 * p1.x - 3 * p2.x + p3.x) * t3),
+          0.5 *
+            (2 * p1.y +
+              (-p0.y + p2.y) * t +
+              (2 * p0.y - 5 * p1.y + 4 * p2.y - p3.y) * t2 +
+              (-p0.y + 3 * p1.y - 3 * p2.y + p3.y) * t3),
+        ),
+      );
+    }
+  }
+  out.push(points[points.length - 1]!);
+  return out;
+}
 const mirrorPoint = (p: Vec2): Vec2 => vec(MIRROR - p.x, p.y);
 
 /** Wall styling shared by the table's structural boundary. */
@@ -139,12 +178,21 @@ export function buildTable(): Table {
     arc('wall', DOME_CENTER, DOME_RADIUS, deg(180), deg(360), RAIL),
   );
 
-  // Left wall, straight down the side of the play area.
-  colliders.push(...polyline('wall', [vec(PLAY_LEFT, LANE_TOP), vec(PLAY_LEFT, 980)], 'right'));
-
-  // The shooter lane divider doubles as the right edge of the play area.
+  // Left wall, straight down the side of the play area, ending in an apron
+  // that funnels the outlane into the same drain as the middle.
   colliders.push(
-    ...polyline('wall', [vec(LANE_LEFT, 980), vec(LANE_LEFT, LANE_TOP)], 'right'),
+    ...polyline(
+      'wall',
+      [vec(PLAY_LEFT, LANE_TOP), vec(PLAY_LEFT, 898), vec(96, 972)],
+      'right',
+    ),
+  );
+
+  // The shooter lane divider doubles as the right edge of the play area, and
+  // gets the mirrored apron on its playfield side.
+  colliders.push(
+    ...polyline('wall', [vec(LANE_LEFT, LANE_FLOOR), vec(LANE_LEFT, LANE_TOP)], 'right'),
+    ...polyline('wall', [vec(LANE_LEFT, 898), vec(MIRROR - 96, 972)], 'left'),
   );
 
   // Outer wall of the shooter lane, and its floor.
@@ -224,28 +272,45 @@ export function buildTable(): Table {
 
   const dropTargets = bank(
     'drop',
-    vec(112, 434),
-    vec(172, 356),
+    vec(146, 520),
+    vec(204, 446),
     3,
     'left',
     { restitution: 0.3, friction: 0.1, radius: 4 },
   );
   const standupTargets = bank(
     'target',
-    mirrorPoint(vec(112, 434)),
-    mirrorPoint(vec(172, 356)),
+    mirrorPoint(vec(146, 520)),
+    mirrorPoint(vec(204, 446)),
     3,
     'right',
     { restitution: 0.45, friction: 0.1, radius: 4 },
   );
+  // A pair of low standups either side of the centre shot: easy to hit off a
+  // flipper, and they leave a gap wide enough for the saucer shot.
+  // Sloped outward, so a ball that lands on one rolls off towards the
+  // slingshot instead of sitting on it like a shelf.
+  for (const [i, x] of [228, MIRROR - 228].entries()) {
+    const id = `target-${3 + i}`;
+    const outward = i === 0 ? -1 : 1;
+    const a = vec(x - 18 * outward, 640);
+    const b = vec(x + 18 * outward, 658);
+    const collider = segmentFlipped(id, a, b, {
+      restitution: 0.45,
+      friction: 0.1,
+      radius: 4,
+    });
+    standupTargets.push({ id, a, b, collider });
+  }
+
   for (const t of [...dropTargets, ...standupTargets]) colliders.push(t.collider);
 
   /* --- Saucer ---------------------------------------------------------- */
 
   // A cup open at the bottom: the ball is shot up into it and cannot roll out
   // on its own, so the rule layer decides when to kick it free.
-  const saucerCenter = vec(200, 486);
-  const saucerRadius = 36;
+  const saucerCenter = vec(PLAY_CENTER, 402);
+  const saucerRadius = 34;
   colliders.push(
     arc('saucer-wall', saucerCenter, saucerRadius, deg(135), deg(405), {
       restitution: 0.12,
@@ -258,30 +323,40 @@ export function buildTable(): Table {
 
   // Entry funnel on the right, feeding a wire ramp that returns the ball to the
   // left inlane. The ramp itself is a path the rule layer walks the ball along.
-  const rampEntry = vec(404, 520);
+  const rampEntry = vec(404, 556);
   colliders.push(
-    ...polyline('guide', [vec(372, 566), vec(384, 500)], 'right'),
-    ...polyline('guide', [vec(436, 566), vec(424, 500)], 'left'),
+    ...polyline('guide', [vec(370, 610), vec(382, 536)], 'right', RAIL),
+    ...polyline('guide', [vec(438, 610), vec(426, 536)], 'left', RAIL),
   );
   sensors.push(sensorCircle('ramp-entry', rampEntry, 22));
-  const rampPath: Vec2[] = [
+  // The habitrail is raised above the playfield, so it is allowed to cross
+  // over the bumpers and guides. It is drawn last, with a shadow, to read that
+  // way.
+  // Routed to stay clear of the bumpers above and the target banks below, so
+  // it never hides a shot the player needs to see.
+  const rampPath: Vec2[] = smoothPath([
     rampEntry,
-    vec(420, 430),
-    vec(400, 330),
-    vec(330, 268),
-    vec(230, 268),
-    vec(140, 330),
-    vec(104, 440),
-    vec(96, 560),
-    vec(84, 660),
-  ];
+    vec(438, 494),
+    vec(444, 424),
+    vec(410, 352),
+    vec(338, 308),
+    vec(250, 300),
+    vec(172, 330),
+    vec(124, 392),
+    vec(100, 470),
+    vec(90, 556),
+    vec(86, 620),
+    vec(84, 664),
+  ]);
 
   /* --- Posts ------------------------------------------------------------ */
 
   const posts: BumperSpec[] = [
-    { id: 'post', center: vec(146, 616), radius: 9 },
-    { id: 'post', center: mirrorPoint(vec(146, 616)), radius: 9 },
-    { id: 'post', center: vec(278, 596), radius: 9 },
+    { id: 'post', center: vec(150, 624), radius: 9 },
+    { id: 'post', center: mirrorPoint(vec(150, 624)), radius: 9 },
+    { id: 'post', center: vec(PLAY_CENTER, 540), radius: 9 },
+    { id: 'post', center: vec(196, 386), radius: 8 },
+    { id: 'post', center: mirrorPoint(vec(196, 386)), radius: 8 },
   ];
   for (const p of posts) {
     colliders.push(circle(p.id, p.center, p.radius, { restitution: 0.7, radius: 0 }));
@@ -373,13 +448,13 @@ export function buildTable(): Table {
   /* --- Sensors ----------------------------------------------------------- */
 
   sensors.push(
-    sensorRect('drain', PLAY_LEFT, DRAIN_Y, PLAY_RIGHT - PLAY_LEFT, TABLE_H - DRAIN_Y),
+    sensorRect('drain', 92, DRAIN_Y, MIRROR - 184, TABLE_H - DRAIN_Y),
     sensorRect('outlane-left', PLAY_LEFT, 820, 38, 80),
     sensorRect('outlane-right', MIRROR - PLAY_LEFT - 38, 820, 38, 80),
     sensorRect('inlane-left', 64, 820, 34, 60),
     sensorRect('inlane-right', MIRROR - 98, 820, 34, 60),
     sensorRect('lane-exit', LANE_LEFT, LANE_TOP - 30, LANE_RIGHT - LANE_LEFT, 30),
-    sensorRect('spinner', PLAY_LEFT + 2, 560, 50, 26),
+    sensorRect('spinner', PLAY_LEFT + 4, 556, 48, 30),
   );
 
   const rollovers: Vec2[] = [

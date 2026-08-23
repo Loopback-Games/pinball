@@ -137,6 +137,14 @@ export class Game {
   private orbitCount = 0;
   private rampCount = 0;
   private rampValue = SCORE.rampBase;
+  /**
+   * Time left before each collider may score again.
+   *
+   * A ball resting against a target produces a contact every substep. Real
+   * machines debounce their switches for exactly this reason; without it a
+   * settled ball racks up thousands of points a second.
+   */
+  private readonly switchCooldown = new Map<string, number>();
   private nudgeCooldown = 0;
   private tiltDecay = 0;
   private attractTimer = 0;
@@ -198,6 +206,7 @@ export class Game {
     this.dropsDown.clear();
     this.standupsHit.clear();
     this.rolloversLit.clear();
+    this.switchCooldown.clear();
     this.bumperHits = 0;
     this.orbitCount = 0;
     this.rampCount = 0;
@@ -224,6 +233,7 @@ export class Game {
 
   update(dt: number, intents: Intents): void {
     const step = Math.min(dt, 0.05);
+    this.tickSwitches(step);
     this.decayLamps(step);
     this.decayEffects(step);
     if (this.banner) {
@@ -348,9 +358,29 @@ export class Game {
 
   /* ---------------------------------------------------------------- */
 
+  /**
+   * True if this collider has already scored recently, in which case the hit
+   * is ignored. Bumpers rearm fastest because rapid repeat hits are the point
+   * of them.
+   */
+  private debounced(id: string, seconds: number): boolean {
+    if ((this.switchCooldown.get(id) ?? 0) > 0) return true;
+    this.switchCooldown.set(id, seconds);
+    return false;
+  }
+
+  private tickSwitches(dt: number): void {
+    for (const [id, remaining] of this.switchCooldown) {
+      const next = remaining - dt;
+      if (next <= 0) this.switchCooldown.delete(id);
+      else this.switchCooldown.set(id, next);
+    }
+  }
+
   private onCollision(c: Collision): void {
     const id = c.id;
     if (id.startsWith('bumper-')) {
+      if (this.debounced(id, 0.09)) return;
       this.lamps.set(id, 1);
       this.bumperHits += 1;
       this.award(SCORE.bumper, c.point, 'bumper');
@@ -362,12 +392,14 @@ export class Game {
       return;
     }
     if (id.startsWith('sling-')) {
+      if (this.debounced(id, 0.14)) return;
       this.lamps.set(id, 1);
       this.award(SCORE.slingshot, c.point, 'sling');
       this.onSound('sling', 0.6);
       return;
     }
     if (id.startsWith('drop-')) {
+      if (this.debounced(id, 0.3)) return;
       if (this.dropsDown.has(id)) return;
       this.dropsDown.add(id);
       const target = this.table.dropTargets.find((t) => t.id === id);
@@ -390,6 +422,7 @@ export class Game {
       return;
     }
     if (id.startsWith('target-')) {
+      if (this.debounced(id, 0.35)) return;
       this.lamps.set(id, 1);
       this.award(SCORE.standupTarget, c.point, 'target');
       this.onSound('target', 0.6);
@@ -643,7 +676,8 @@ export class Game {
 
   private endBall(): void {
     // Pay the bonus, then hand over to the next ball.
-    const bonus = this.bonusUnits * SCORE.bonusPerUnit * this.bonusMultiplier;
+    const bonus =
+      Math.min(this.bonusUnits, 99) * SCORE.bonusPerUnit * this.bonusMultiplier;
     if (bonus > 0) {
       this.score += bonus;
       this.setBanner(

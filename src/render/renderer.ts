@@ -67,19 +67,27 @@ export class Renderer {
     // Wide screens get the score panel beside the table; tall ones above it.
     const sidePanel = cssWidth > cssHeight * 0.95;
     const panelWidth = sidePanel ? Math.min(320, cssWidth * 0.3) : 0;
-    const topPanel = sidePanel ? 0 : Math.min(150, cssHeight * 0.17);
+    const topPanel = sidePanel ? 0 : Math.min(104, cssHeight * 0.12);
 
     const availW = cssWidth - panelWidth - 16;
     const availH = cssHeight - topPanel - 16;
     const scale = Math.min(availW / TABLE_W, availH / TABLE_H);
 
+    const tableH = TABLE_H * scale;
+    // Portrait screens are taller than the table's aspect ratio allows, so the
+    // slack goes above it: the flippers stay in easy thumb reach at the bottom
+    // and the score gets the room it frees up.
+    const offsetY = sidePanel
+      ? topPanel + (availH - tableH) / 2 + 8
+      : cssHeight - tableH - 8;
+
     this.layout = {
       scale,
       offsetX: panelWidth + (availW - TABLE_W * scale) / 2 + 8,
-      offsetY: topPanel + (availH - TABLE_H * scale) / 2 + 8,
+      offsetY,
       hud: sidePanel
         ? { x: 12, y: 16, w: panelWidth - 20, h: cssHeight - 32, vertical: true }
-        : { x: 12, y: 8, w: cssWidth - 24, h: topPanel - 8, vertical: false },
+        : { x: 14, y: 10, w: cssWidth - 28, h: Math.max(70, offsetY - 18), vertical: false },
     };
 
     this.buildStaticLayer(table);
@@ -158,6 +166,26 @@ export class Renderer {
       g.stroke();
     }
 
+    // Arrow inserts pointing at the two big shots.
+    const arrow = (x: number, y: number, angle: number, color: string): void => {
+      g.save();
+      g.translate(x, y);
+      g.rotate(angle);
+      g.globalAlpha = 0.5;
+      g.fillStyle = color;
+      g.beginPath();
+      g.moveTo(0, -13);
+      g.lineTo(10, 6);
+      g.lineTo(0, 1);
+      g.lineTo(-10, 6);
+      g.closePath();
+      g.fill();
+      g.restore();
+    };
+    arrow(404, 604, 0, PALETTE.violet);
+    arrow(PLAY_CENTER, 462, 0, PALETTE.violet);
+    arrow(51, 614, 0, PALETTE.cyan);
+
     // Lane arrows pointing up the inlanes and outlanes.
     for (const x of [43, 81, PLAY_RIGHT - 43, PLAY_RIGHT - 81]) {
       g.save();
@@ -175,23 +203,22 @@ export class Renderer {
       g.restore();
     }
 
-    // The ramp, drawn as a wire habitrail under everything else.
+    // Spinner, sitting across the left lane.
     g.save();
-    g.strokeStyle = 'rgba(180, 210, 255, 0.30)';
-    g.lineWidth = 9;
-    g.lineCap = 'round';
-    g.lineJoin = 'round';
-    g.beginPath();
-    const path = table.rampPath;
-    const first = path[0];
-    if (first) {
-      g.moveTo(first.x, first.y);
-      for (const p of path.slice(1)) g.lineTo(p.x, p.y);
-    }
-    g.stroke();
-    g.strokeStyle = 'rgba(60, 224, 255, 0.22)';
+    g.translate(51, 571);
+    g.fillStyle = 'rgba(60, 224, 255, 0.16)';
+    g.fillRect(-22, -15, 44, 30);
+    g.strokeStyle = PALETTE.cyan;
+    g.lineWidth = 2;
+    g.strokeRect(-22, -15, 44, 30);
+    g.strokeStyle = 'rgba(219, 228, 244, 0.75)';
     g.lineWidth = 3;
-    g.stroke();
+    for (let i = -1; i <= 1; i += 1) {
+      g.beginPath();
+      g.moveTo(i * 12, -13);
+      g.lineTo(i * 12, 13);
+      g.stroke();
+    }
     g.restore();
 
     // Shooter lane floor markings.
@@ -257,30 +284,56 @@ export class Renderer {
     g.lineTo(LANE_RIGHT - 3, 300);
     g.stroke();
 
-    // Saucer cup.
+    // Saucer: a kickout hole with a lit collar, so it reads as a target rather
+    // than a smudge on the playfield.
     const s = table.saucer;
+    g.save();
+    g.translate(s.center.x, s.center.y);
+
+    const collar = g.createRadialGradient(0, 0, s.radius - 12, 0, 0, s.radius + 12);
+    collar.addColorStop(0, 'rgba(166, 123, 255, 0.45)');
+    collar.addColorStop(1, 'rgba(166, 123, 255, 0)');
+    g.fillStyle = collar;
     g.beginPath();
-    g.arc(s.center.x, s.center.y, s.radius, Math.PI * 0.75, Math.PI * 2.25);
-    g.strokeStyle = PALETTE.railMid;
-    g.lineWidth = 8;
-    g.stroke();
-    const hole = g.createRadialGradient(
-      s.center.x,
-      s.center.y,
-      2,
-      s.center.x,
-      s.center.y,
-      s.radius,
-    );
-    hole.addColorStop(0, '#000000');
-    hole.addColorStop(1, 'rgba(0,0,0,0.05)');
-    g.fillStyle = hole;
-    g.beginPath();
-    g.arc(s.center.x, s.center.y, s.radius - 4, 0, Math.PI * 2);
+    g.arc(0, 0, s.radius + 12, 0, Math.PI * 2);
     g.fill();
 
-    // Posts.
+    const hole = g.createRadialGradient(0, -4, 2, 0, 0, s.radius - 2);
+    hole.addColorStop(0, '#000000');
+    hole.addColorStop(0.7, '#05070f');
+    hole.addColorStop(1, '#121a30');
+    g.fillStyle = hole;
+    g.beginPath();
+    g.arc(0, 0, s.radius - 3, 0, Math.PI * 2);
+    g.fill();
+
+    // The cup wall, open at the bottom where the ball enters.
+    g.beginPath();
+    g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
+    g.strokeStyle = PALETTE.railMid;
+    g.lineWidth = 7;
+    g.lineCap = 'round';
+    g.stroke();
+    g.beginPath();
+    g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
+    g.strokeStyle = PALETTE.railLight;
+    g.lineWidth = 2;
+    g.stroke();
+
+    g.fillStyle = PALETTE.violet;
+    g.font = '700 11px ui-monospace, Menlo, monospace';
+    g.textAlign = 'center';
+    g.fillText('MISSION', 0, s.radius + 20);
+    g.restore();
+
+    // Posts, each wearing a rubber ring so it reads as a post rather than a
+    // stray ball.
     for (const p of table.posts) {
+      g.beginPath();
+      g.arc(p.center.x, p.center.y, p.radius + 4, 0, Math.PI * 2);
+      g.strokeStyle = 'rgba(255, 90, 216, 0.55)';
+      g.lineWidth = 4;
+      g.stroke();
       const grad = g.createRadialGradient(
         p.center.x - 3,
         p.center.y - 3,
@@ -326,7 +379,11 @@ export class Renderer {
     this.drawSlingshotFlash(ctx, game);
     this.drawFlippers(ctx, game);
     this.drawPlunger(ctx, game);
-    this.drawBalls(ctx, game);
+    // Balls on the playfield pass under the raised habitrail; the one riding
+    // it goes over the top.
+    this.drawBalls(ctx, game, false);
+    this.drawRamp(ctx, game);
+    this.drawBalls(ctx, game, true);
     this.drawEffects(ctx, game);
     ctx.restore();
 
@@ -341,10 +398,10 @@ export class Renderer {
       ctx.translate(p.x, p.y);
       ctx.beginPath();
       ctx.ellipse(0, 0, 16, 9, 0, 0, Math.PI * 2);
-      ctx.fillStyle = lit > 0 ? PALETTE.amber : 'rgba(255, 180, 60, 0.16)';
+      ctx.fillStyle = lit > 0 ? PALETTE.amber : 'rgba(255, 190, 90, 0.34)';
       ctx.globalAlpha = lit > 0 ? 0.35 + lit * 0.65 : 1;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 220, 160, 0.5)';
+      ctx.strokeStyle = 'rgba(255, 230, 180, 0.8)';
       ctx.lineWidth = 1.4;
       ctx.globalAlpha = 1;
       ctx.stroke();
@@ -383,15 +440,29 @@ export class Renderer {
   ): void {
     ctx.save();
     ctx.lineCap = 'round';
-    ctx.strokeStyle = 'rgba(10, 14, 26, 0.9)';
-    ctx.lineWidth = 12;
+    // Shadow, then a dark base plate, then the coloured face on top.
+    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
+    ctx.lineWidth = 14;
+    ctx.beginPath();
+    ctx.moveTo(a.x + 2, a.y + 4);
+    ctx.lineTo(b.x + 2, b.y + 4);
+    ctx.stroke();
+    ctx.strokeStyle = '#1a2340';
+    ctx.lineWidth = 13;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
     ctx.lineTo(b.x, b.y);
     ctx.stroke();
     ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.55 + lit * 0.45;
-    ctx.lineWidth = 7;
+    ctx.globalAlpha = 0.65 + lit * 0.35;
+    ctx.lineWidth = 8;
+    ctx.stroke();
+    ctx.globalAlpha = 1;
+    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y - 2);
+    ctx.lineTo(b.x, b.y - 2);
     ctx.stroke();
     if (lit > 0) {
       this.glow(ctx, (a.x + b.x) / 2, (a.y + b.y) / 2, 34 * lit, color, lit * 0.6);
@@ -529,9 +600,112 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawBalls(ctx: CanvasRenderingContext2D, game: Game): void {
+  /**
+   * The raised wire ramp. Drawn above the playfield with a shadow and support
+   * posts so that crossing over the bumpers reads as elevation rather than as
+   * a mistake.
+   */
+  private drawRamp(ctx: CanvasRenderingContext2D, game: Game): void {
+    const path = game.table.rampPath;
+    if (path.length < 2) return;
+
+    const trace = (offset: number, dy: number): void => {
+      ctx.beginPath();
+      for (let i = 0; i < path.length; i += 1) {
+        const p = path[i];
+        if (!p) continue;
+        const prev = path[Math.max(0, i - 1)] ?? p;
+        const next = path[Math.min(path.length - 1, i + 1)] ?? p;
+        const tx = next.x - prev.x;
+        const ty = next.y - prev.y;
+        const len = Math.hypot(tx, ty) || 1;
+        const nx = (-ty / len) * offset;
+        const ny = (tx / len) * offset;
+        if (i === 0) ctx.moveTo(p.x + nx, p.y + ny + dy);
+        else ctx.lineTo(p.x + nx, p.y + ny + dy);
+      }
+    };
+
+    ctx.save();
+    ctx.lineCap = 'round';
+    ctx.lineJoin = 'round';
+
+    // Support posts down to the playfield.
+    ctx.strokeStyle = 'rgba(0,0,0,0.45)';
+    ctx.lineWidth = 3;
+    const postStride = Math.max(2, Math.round(path.length / 14));
+    for (let i = postStride; i < path.length - 1; i += postStride) {
+      const p = path[i];
+      if (!p) continue;
+      ctx.beginPath();
+      ctx.moveTo(p.x, p.y);
+      ctx.lineTo(p.x + 2, p.y + 12);
+      ctx.stroke();
+    }
+
+    // Shadow on the playfield beneath the rail.
+    ctx.strokeStyle = 'rgba(0,0,0,0.42)';
+    ctx.lineWidth = 7;
+    for (const off of [-7, 7]) {
+      trace(off, 12);
+      ctx.stroke();
+    }
+
+    // Cross ties between the two rails.
+    ctx.strokeStyle = 'rgba(150, 175, 215, 0.35)';
+    ctx.lineWidth = 2;
+    const tieStride = Math.max(1, Math.round(path.length / 34));
+    for (let i = 0; i < path.length - 1; i += tieStride) {
+      const a = path[i];
+      const b = path[Math.min(path.length - 1, i + tieStride)];
+      if (!a || !b) continue;
+      for (const f of [0.5]) {
+        const x = a.x + (b.x - a.x) * f;
+        const y = a.y + (b.y - a.y) * f;
+        const tx = b.x - a.x;
+        const ty = b.y - a.y;
+        const len = Math.hypot(tx, ty) || 1;
+        ctx.beginPath();
+        ctx.moveTo(x + (-ty / len) * 7, y + (tx / len) * 7);
+        ctx.lineTo(x - (-ty / len) * 7, y - (tx / len) * 7);
+        ctx.stroke();
+      }
+    }
+
+    // The rails themselves.
+    for (const pass of [
+      { width: 5, style: PALETTE.railDark },
+      { width: 2.5, style: PALETTE.railLight },
+    ]) {
+      ctx.strokeStyle = pass.style;
+      ctx.lineWidth = pass.width;
+      for (const off of [-7, 7]) {
+        trace(off, 0);
+        ctx.stroke();
+      }
+    }
+
+    // A lit entry mouth, so the shot is obvious.
+    const entry = path[0];
+    if (entry) {
+      this.glow(ctx, entry.x, entry.y, 34, PALETTE.violet, 0.4);
+      ctx.strokeStyle = PALETTE.violet;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(entry.x, entry.y, 17, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  private drawBalls(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    onRail: boolean,
+  ): void {
     for (const entry of game.balls) {
       if (entry.mode === 'idle') continue;
+      if ((entry.mode === 'rail') !== onRail) continue;
       let p = entry.ball.pos;
       if (entry.mode === 'rail') {
         p = pointAlong(game.table.rampPath, entry.railT);
@@ -686,30 +860,7 @@ export class Renderer {
       y = this.drawMissionPanel(ctx, game, x, y, hud.w - 36, mono);
       this.drawControls(ctx, x, hud.y + hud.h - 132, mono);
     } else {
-      ctx.fillStyle = PALETTE.text;
-      ctx.font = mono(Math.min(34, hud.h * 0.42), 700);
-      ctx.fillText(game.score.toLocaleString(), hud.x + 4, hud.y + 4);
-
-      ctx.font = mono(12);
-      ctx.fillStyle = PALETTE.textDim;
-      ctx.fillText(
-        `HIGH ${game.highScore.toLocaleString()}`,
-        hud.x + 4,
-        hud.y + hud.h - 34,
-      );
-      ctx.textAlign = 'right';
-      ctx.fillStyle = PALETTE.amber;
-      ctx.font = mono(15, 700);
-      ctx.fillText(game.rank.toUpperCase(), hud.x + hud.w - 4, hud.y + 6);
-      ctx.fillStyle = PALETTE.textDim;
-      ctx.font = mono(12);
-      ctx.fillText(
-        `BALL ${game.ballNumber}  x${game.bonusMultiplier}`,
-        hud.x + hud.w - 4,
-        hud.y + 28,
-      );
-      ctx.textAlign = 'left';
-      this.drawMissionPanel(ctx, game, hud.x + 4, hud.y + hud.h - 16, hud.w - 8, mono);
+      this.drawBackglass(ctx, game, mono);
     }
     ctx.restore();
 
@@ -718,6 +869,103 @@ export class Renderer {
       this.drawAttract(ctx, game, time);
     }
     if (game.tilted) this.drawTilt(ctx, time);
+  }
+
+
+  /**
+   * The score display above the table on portrait screens.
+   *
+   * A phone is taller than the table's aspect ratio, so fitting the playfield
+   * by width always leaves a band spare. Rather than pad it, the band becomes
+   * the backbox the space would occupy on a real machine.
+   */
+  private drawBackglass(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    mono: (size: number, weight?: number) => string,
+  ): void {
+    const { hud } = this.layout;
+    const { x, y, w, h } = hud;
+
+    const panel = ctx.createLinearGradient(x, y, x, y + h);
+    panel.addColorStop(0, 'rgba(18, 30, 62, 0.92)');
+    panel.addColorStop(1, 'rgba(8, 13, 30, 0.92)');
+    ctx.fillStyle = panel;
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(90, 130, 200, 0.35)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+
+    // Title bar.
+    ctx.save();
+    ctx.beginPath();
+    roundRect(ctx, x, y, w, h, 14);
+    ctx.clip();
+    const glow = ctx.createRadialGradient(x + w / 2, y, 4, x + w / 2, y, w * 0.7);
+    glow.addColorStop(0, 'rgba(60, 224, 255, 0.22)');
+    glow.addColorStop(1, 'rgba(60, 224, 255, 0)');
+    ctx.fillStyle = glow;
+    ctx.fillRect(x, y, w, h);
+    ctx.restore();
+
+    const pad = 16;
+    const compact = h < 130;
+    let cursor = y + pad;
+
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.cyan;
+    ctx.font = mono(compact ? 11 : 13, 700);
+    ctx.fillText('LOOPBACK PINBALL', x + pad, cursor);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.amber;
+    ctx.font = mono(compact ? 11 : 13, 700);
+    ctx.fillText(game.rank.toUpperCase(), x + w - pad, cursor);
+    cursor += compact ? 18 : 22;
+
+    // Score, sized to the space available.
+    ctx.textAlign = 'left';
+    ctx.fillStyle = PALETTE.text;
+    const scoreSize = Math.min(w / 8.5, compact ? 30 : 44);
+    ctx.font = mono(scoreSize, 700);
+    ctx.fillText(game.score.toLocaleString(), x + pad, cursor);
+    cursor += scoreSize + 8;
+
+    // Ball indicator lamps, one per ball left.
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = mono(11);
+    ctx.fillText(
+      `HIGH ${game.highScore.toLocaleString()}`,
+      x + w - pad,
+      cursor - scoreSize + 4,
+    );
+    ctx.textAlign = 'left';
+
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = mono(11);
+    ctx.fillText('BALL', x + pad, cursor);
+    for (let i = 0; i < 5; i += 1) {
+      const cx = x + pad + 48 + i * 15;
+      ctx.beginPath();
+      ctx.arc(cx, cursor + 5, 4.5, 0, Math.PI * 2);
+      ctx.fillStyle =
+        i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+      ctx.fill();
+    }
+    ctx.textAlign = 'right';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillText(
+      `BONUS x${game.bonusMultiplier}   UNITS ${game.bonusUnits}`,
+      x + w - pad,
+      cursor,
+    );
+    ctx.textAlign = 'left';
+    cursor += 22;
+
+    if (!compact) {
+      this.drawMissionPanel(ctx, game, x + pad, cursor, w - pad * 2, mono);
+    }
   }
 
   private drawMissionPanel(
@@ -772,7 +1020,7 @@ export class Renderer {
     if (!banner) return;
     const { offsetX, offsetY, scale } = this.layout;
     const cx = offsetX + PLAY_CENTER * scale;
-    const cy = offsetY + 620 * scale;
+    const cy = offsetY + 726 * scale;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.globalAlpha = Math.min(1, banner.life * 2);
