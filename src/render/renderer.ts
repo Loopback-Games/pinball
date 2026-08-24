@@ -18,7 +18,8 @@ import { SCORE, SPINNER_VALUE_MAX, SPINS_TO_ARM_WARP } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp } from '../engine/vec2.js';
 import type { Theme } from './theme.js';
-import { ORBIT_THEME, seeded, withAlpha } from './theme.js';
+import { ORBIT_THEME, seeded, shade, withAlpha } from './theme.js';
+import { attractLayout } from './attract-layout.js';
 
 /** Width the audio buttons occupy in the top-right corner, in CSS pixels. */
 const AUDIO_BUTTON_SPAN = 96;
@@ -406,7 +407,7 @@ export class Renderer {
     g.fill();
 
     const hole = g.createRadialGradient(0, -4, 2, 0, 0, s.radius - 2);
-    hole.addColorStop(0, '#000000');
+    hole.addColorStop(0, shade(this.theme.holeMid, 0));
     hole.addColorStop(0.7, this.theme.holeMid);
     hole.addColorStop(1, this.theme.holeRim);
     g.fillStyle = hole;
@@ -552,10 +553,14 @@ export class Renderer {
       const audible = wanted && audio.running;
       const on = wanted;
       ctx.save();
-      ctx.fillStyle = audible ? 'rgba(24, 40, 78, 0.85)' : 'rgba(14, 18, 32, 0.8)';
+      ctx.fillStyle = audible
+        ? withAlpha(this.theme.playfieldTop, 0.85)
+        : withAlpha(this.theme.voidTop, 0.8);
       roundRect(ctx, b.x, b.y, b.w, b.h, 10);
       ctx.fill();
-      ctx.strokeStyle = audible ? 'rgba(60, 224, 255, 0.6)' : 'rgba(120, 140, 180, 0.35)';
+      ctx.strokeStyle = audible
+        ? withAlpha(this.theme.primary, 0.6)
+        : withAlpha(this.theme.textDim, 0.35);
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
@@ -666,10 +671,10 @@ export class Renderer {
         ? this.theme.primary
         : collected
           ? this.theme.highlight
-          : 'rgba(255, 190, 90, 0.28)';
+          : withAlpha(this.theme.highlight, 0.28);
       ctx.globalAlpha = skill ? 0.4 + pulse * 0.6 : collected ? 1 : 1;
       ctx.fill();
-      ctx.strokeStyle = 'rgba(255, 230, 180, 0.8)';
+      ctx.strokeStyle = withAlpha(shade(this.theme.highlight, 1.25), 0.8);
       ctx.lineWidth = 1.4;
       ctx.globalAlpha = 1;
       ctx.stroke();
@@ -704,7 +709,7 @@ export class Renderer {
       const lit = game.lamps.get(t.id) ?? 0;
       if (!t.collider.enabled) {
         // A dropped target leaves its slot showing.
-        ctx.strokeStyle = 'rgba(255, 90, 216, 0.25)';
+        ctx.strokeStyle = withAlpha(this.theme.secondary, 0.25);
         ctx.lineWidth = 3;
         ctx.beginPath();
         ctx.moveTo(t.a.x, t.a.y);
@@ -736,7 +741,7 @@ export class Renderer {
     ctx.moveTo(a.x + 2, a.y + 4);
     ctx.lineTo(b.x + 2, b.y + 4);
     ctx.stroke();
-    ctx.strokeStyle = '#1a2340';
+    ctx.strokeStyle = shade(this.theme.playfieldTop, 1.15);
     ctx.lineWidth = 13;
     ctx.beginPath();
     ctx.moveTo(a.x, a.y);
@@ -769,7 +774,7 @@ export class Renderer {
       // Skirt.
       ctx.beginPath();
       ctx.arc(0, 0, r + 7, 0, Math.PI * 2);
-      ctx.fillStyle = 'rgba(12, 20, 40, 0.85)';
+      ctx.fillStyle = withAlpha(this.theme.voidBottom, 0.85);
       ctx.fill();
       ctx.strokeStyle = this.theme.railMid;
       ctx.lineWidth = 2;
@@ -777,9 +782,9 @@ export class Renderer {
 
       // Cap.
       const cap = ctx.createRadialGradient(-r * 0.3, -r * 0.35, 2, 0, 0, r);
-      cap.addColorStop(0, lit > 0 ? '#ffffff' : '#7ad9f2');
+      cap.addColorStop(0, lit > 0 ? this.theme.ballLight : shade(this.theme.primary, 1.35));
       cap.addColorStop(0.5, this.theme.primary);
-      cap.addColorStop(1, '#0d4f6e');
+      cap.addColorStop(1, shade(this.theme.primary, 0.32));
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, Math.PI * 2);
       ctx.fillStyle = cap;
@@ -841,7 +846,7 @@ export class Renderer {
       const grad = ctx.createLinearGradient(f.pivot.x, f.pivot.y, tip.x, tip.y);
       const hot = game.tilted ? this.theme.railDark : this.theme.secondary;
       grad.addColorStop(0, hot);
-      grad.addColorStop(1, '#5a1f52');
+      grad.addColorStop(1, shade(this.theme.secondary, 0.38));
       ctx.strokeStyle = grad;
       ctx.lineWidth = f.pivotRadius * 2;
       ctx.beginPath();
@@ -936,8 +941,8 @@ export class Renderer {
 
     // The long way round: open plastic, the ramp that has always been there.
     this.railSurface(ctx, rampPath, {
-      from: 'rgba(150, 205, 255, 0.30)',
-      to: 'rgba(110, 160, 235, 0.16)',
+      from: withAlpha(shade(this.theme.railLight, 0.92), 0.3),
+      to: withAlpha(this.theme.railMid, 0.16),
       width: 11,
     });
 
@@ -959,8 +964,8 @@ export class Renderer {
     // until the gate is thrown.
     ctx.globalAlpha = 0.4 + 0.6 * this.diverter;
     this.railSurface(ctx, fork, {
-      from: 'rgba(190, 150, 255, 0.34)',
-      to: 'rgba(140, 105, 235, 0.20)',
+      from: withAlpha(shade(this.theme.feature, 1.2), 0.34),
+      to: withAlpha(this.theme.feature, 0.2),
       width: 12,
     });
     this.railRibs(ctx, fork, 12);
@@ -972,7 +977,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(spout.x, spout.y);
       ctx.rotate(angle);
-      ctx.fillStyle = 'rgba(10, 14, 28, 0.8)';
+      ctx.fillStyle = withAlpha(this.theme.voidTop, 0.8);
       ctx.beginPath();
       ctx.ellipse(0, 0, 4, 12, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -1013,13 +1018,13 @@ export class Renderer {
         ctx.fillStyle = this.theme.feature;
         ctx.font = '700 11px ui-monospace, Menlo, monospace';
         ctx.textAlign = 'center';
-        ctx.fillText('WARP', entry.x, entry.y + 40);
+        ctx.fillText(game.table.warpLabel ?? 'WARP', entry.x, entry.y + 40);
         ctx.restore();
       }
     }
     const exit = rampPath[rampPath.length - 1];
     if (exit) {
-      ctx.fillStyle = 'rgba(198, 224, 255, 0.5)';
+      ctx.fillStyle = withAlpha(this.theme.railLight, 0.5);
       ctx.beginPath();
       ctx.ellipse(exit.x, exit.y, 13, 6, 0, 0, Math.PI * 2);
       ctx.fill();
@@ -1082,10 +1087,10 @@ export class Renderer {
       const edge = Renderer.offsetPath(path, d, 0);
       ctx.beginPath();
       edge.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-      ctx.strokeStyle = 'rgba(20, 30, 52, 0.85)';
+      ctx.strokeStyle = withAlpha(shade(this.theme.playfieldTop, 1.3), 0.85);
       ctx.lineWidth = 4.5;
       ctx.stroke();
-      ctx.strokeStyle = 'rgba(198, 224, 255, 0.9)';
+      ctx.strokeStyle = withAlpha(this.theme.railLight, 0.9);
       ctx.lineWidth = 1.8;
       ctx.stroke();
     }
@@ -1103,7 +1108,7 @@ export class Renderer {
     const left = Renderer.offsetPath(path, width, 0);
     const right = Renderer.offsetPath(path, -width, 0);
     ctx.save();
-    ctx.strokeStyle = 'rgba(210, 190, 255, 0.30)';
+    ctx.strokeStyle = withAlpha(shade(this.theme.feature, 1.3), 0.3);
     ctx.lineWidth = 1.4;
     for (let i = 2; i < path.length - 1; i += 3) {
       const a = left[i];
@@ -1185,7 +1190,7 @@ export class Renderer {
     ctx.rotate(angle);
     const lit = this.diverter > 0.5;
     ctx.fillStyle = lit ? this.theme.feature : this.theme.railLight;
-    ctx.strokeStyle = 'rgba(10, 14, 28, 0.9)';
+    ctx.strokeStyle = withAlpha(this.theme.voidTop, 0.9);
     ctx.lineWidth = 1.5;
     ctx.beginPath();
     ctx.moveTo(-2, -4);
@@ -1248,12 +1253,12 @@ export class Renderer {
     const half = Math.abs(face) * (spec.w / 2 - 7) + 1.5;
     // Edge-on the vane is a bright line; face-on it is a lit plate.
     const grad = ctx.createLinearGradient(-half, 0, half, 0);
-    grad.addColorStop(0, 'rgba(20, 30, 52, 0.95)');
+    grad.addColorStop(0, withAlpha(shade(this.theme.playfieldTop, 1.3), 0.95));
     grad.addColorStop(
       0.5,
-      face >= 0 ? 'rgba(226, 238, 255, 0.95)' : 'rgba(150, 170, 205, 0.9)',
+      face >= 0 ? withAlpha(this.theme.railLight, 0.95) : withAlpha(this.theme.railMid, 0.9),
     );
-    grad.addColorStop(1, 'rgba(20, 30, 52, 0.95)');
+    grad.addColorStop(1, withAlpha(shade(this.theme.playfieldTop, 1.3), 0.95));
     ctx.fillStyle = grad;
     ctx.fillRect(-half, -half1 + 3, half * 2, spec.h - 6);
     ctx.strokeStyle = color;
@@ -1289,7 +1294,7 @@ export class Renderer {
         ctx.fill();
       } else {
         ctx.globalAlpha = 0.45;
-        ctx.strokeStyle = 'rgba(125, 141, 176, 0.9)';
+        ctx.strokeStyle = withAlpha(this.theme.textDim, 0.9);
         ctx.lineWidth = 1.2;
         ctx.stroke();
       }
@@ -1314,7 +1319,7 @@ export class Renderer {
         const len = Math.min(speed * 0.012, 30);
         const nx = entry.ball.vel.x / speed;
         const ny = entry.ball.vel.y / speed;
-        ctx.strokeStyle = 'rgba(200, 220, 255, 0.22)';
+        ctx.strokeStyle = withAlpha(this.theme.ballMid, 0.22);
         ctx.lineWidth = BALL_RADIUS * 1.7;
         ctx.lineCap = 'round';
         ctx.beginPath();
@@ -1400,10 +1405,10 @@ export class Renderer {
       `${weight} ${size}px ui-monospace, "SF Mono", Menlo, Consolas, monospace`;
 
     if (hud.vertical) {
-      ctx.fillStyle = 'rgba(10, 16, 34, 0.72)';
+      ctx.fillStyle = withAlpha(this.theme.voidTop, 0.72);
       roundRect(ctx, hud.x, hud.y, hud.w, hud.h, 14);
       ctx.fill();
-      ctx.strokeStyle = 'rgba(90, 130, 200, 0.3)';
+      ctx.strokeStyle = withAlpha(this.theme.railMid, 0.3);
       ctx.lineWidth = 1;
       ctx.stroke();
 
@@ -1742,11 +1747,21 @@ export class Renderer {
     const cx = offsetX + PLAY_CENTER * scale;
     const cy = offsetY + 430 * scale;
     const board = game.scoreboard;
-    // The card grows to fit however many scores the board is holding, so a
-    // fresh browser gets a compact title card rather than a panel of blanks.
-    const boardHeight = board.length > 0 ? 34 + board.length * 22 : 0;
-    const top = cy - 120 * scale;
-    const height = (302 + boardHeight) * scale;
+
+    // Every position on the card comes from one pure function, so the card
+    // cannot be laid out one way here and measured another way in the tests.
+    const plan = attractLayout({
+      gameOver: game.phase === 'gameOver',
+      boardRows: board.length,
+    });
+    /** A card offset in table units, in screen pixels. */
+    const at = (v: number): number => cy + v * scale;
+    const px = (size: number, weight = 700): string =>
+      `${weight} ${Math.round(size * scale)}px ui-monospace, Menlo, monospace`;
+    const lineAt = (kind: string): number => {
+      const line = plan.lines.find((l) => l.kind === kind);
+      return at(line ? line.y : 0);
+    };
 
     ctx.save();
     ctx.textAlign = 'center';
@@ -1754,9 +1769,9 @@ export class Renderer {
     roundRect(
       ctx,
       offsetX + (PLAY_LEFT + 20) * scale,
-      top,
+      at(plan.top),
       (PLAY_RIGHT - PLAY_LEFT - 40) * scale,
-      height,
+      plan.height * scale,
       16,
     );
     ctx.fill();
@@ -1767,31 +1782,31 @@ export class Renderer {
     ctx.fillStyle = this.theme.primary;
     ctx.shadowColor = this.theme.primary;
     ctx.shadowBlur = 22;
-    ctx.font = `700 ${Math.round(40 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('LOOPBACK', cx, cy - 82 * scale);
-    ctx.fillText('PINBALL', cx, cy - 38 * scale);
+    ctx.font = px(40);
+    ctx.fillText('LOOPBACK', cx, lineAt('title-1'));
+    ctx.fillText('PINBALL', cx, lineAt('title-2'));
     ctx.shadowBlur = 0;
 
     if (game.phase === 'gameOver') {
       ctx.fillStyle = this.theme.highlight;
-      ctx.font = `700 ${Math.round(20 * scale)}px ui-monospace, Menlo, monospace`;
-      ctx.fillText(`FINAL ${game.score.toLocaleString()}`, cx, cy + 4 * scale);
+      ctx.font = px(20);
+      ctx.fillText(`FINAL ${game.score.toLocaleString()}`, cx, lineAt('final'));
     }
 
     // The machine picker. It uses the button hit-test, which sits above every
     // play zone in the input's hit order, so choosing a table can never launch
     // a ball or nudge the cabinet by accident.
-    const pickerY = cy + 14 * scale;
+    const pickerY = at(plan.pickerY);
     const arrowSpan = (PLAY_RIGHT - PLAY_LEFT - 40) * scale * 0.42;
     ctx.fillStyle = this.theme.feature;
-    ctx.font = `700 ${Math.round(19 * scale)}px ui-monospace, Menlo, monospace`;
+    ctx.font = px(19);
     ctx.fillText(game.machine.name.toUpperCase(), cx, pickerY);
     ctx.fillStyle = this.theme.textDim;
     // Kept small and the taglines kept short: the arrows take the outer 16% of
     // the card on each side, and a line that reaches them is a line that
     // collides with them on a narrow screen.
-    ctx.font = `500 ${Math.round(10 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText(game.machine.tagline, cx, pickerY + 18 * scale);
+    ctx.font = px(10, 500);
+    ctx.fillText(game.machine.tagline, cx, lineAt('tagline'));
 
     for (const [id, dx, glyph] of [
       ['machine-prev', -arrowSpan, '\u2039'],
@@ -1805,28 +1820,32 @@ export class Renderer {
       roundRect(ctx, bx - size / 2, pickerY - size * 0.72, size, size, 8);
       ctx.stroke();
       ctx.fillStyle = this.theme.primary;
-      ctx.font = `700 ${Math.round(20 * scale)}px ui-monospace, Menlo, monospace`;
+      ctx.font = px(20);
       ctx.fillText(glyph, bx, pickerY - size * 0.06);
     }
 
     ctx.fillStyle = this.theme.text;
     ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.4;
-    ctx.font = `600 ${Math.round(18 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('TAP OR PRESS ENTER', cx, cy + 66 * scale);
+    ctx.font = px(18, 600);
+    ctx.fillText('TAP OR PRESS ENTER', cx, lineAt('prompt'));
     ctx.globalAlpha = 1;
 
-    let cursor = cy + 106 * scale;
     if (board.length > 0) {
-      cursor = this.drawScoreboard(ctx, game, cx, cursor, scale);
+      this.drawScoreboard(ctx, game, cx, at(plan.boardY), scale);
     }
 
     ctx.fillStyle = this.theme.textDim;
     ctx.textAlign = 'center';
-    ctx.font = `500 ${Math.round(13 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('Tap left / right to flip', cx, cursor);
-    ctx.fillText('Hold to draw the plunger', cx, cursor + 20 * scale);
-    ctx.fillText('Buttons top right mute sound', cx, cursor + 40 * scale);
-    ctx.fillText('1 / 2 / 3 pick a machine', cx, cursor + 60 * scale);
+    ctx.font = px(13, 500);
+    const help = [
+      'Tap left / right to flip',
+      'Hold to draw the plunger',
+      'Buttons top right mute sound',
+      '1 / 2 / 3 pick a machine',
+    ];
+    for (const [i, text] of help.entries()) {
+      ctx.fillText(text, cx, at(plan.helpY + i * 20));
+    }
     ctx.restore();
   }
 

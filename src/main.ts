@@ -51,6 +51,20 @@ function wire(g: Game): void {
 wire(game);
 
 /**
+ * Match the page itself to the machine.
+ *
+ * The canvas never fills the window, so whatever is behind it shows as a
+ * border. Left hardcoded to the space void, a forge table sat in a deep blue
+ * frame, and the browser's own chrome was tinted to match the wrong table.
+ */
+function dressPage(m: Machine): void {
+  document.body.style.background = m.theme.voidBottom;
+  const meta = document.querySelector('meta[name="theme-color"]');
+  if (meta instanceof HTMLMetaElement) meta.content = m.theme.voidTop;
+}
+dressPage(machine);
+
+/**
  * Swap the machine, which means a whole new game on a whole new playfield.
  *
  * Only ever reached from the attract screen, so no game is interrupted. The
@@ -66,6 +80,7 @@ function selectMachine(next: Machine): void {
   }
   game = new Game(Date.now() & 0xffffffff, machine);
   wire(game);
+  dressPage(machine);
   renderer.resize(game.table);
   audio.play('laneChange', 0.6);
 }

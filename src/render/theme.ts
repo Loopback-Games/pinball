@@ -162,6 +162,24 @@ export const TIDE_THEME: Theme = {
   fleck: '#cdfffa',
 };
 
+/**
+ * `hex` lightened or darkened by `factor` (1 leaves it alone).
+ *
+ * Sphere shading, raised edges and shadowed rims all want a lighter or darker
+ * version of a colour the theme already names. Spelling those out per theme
+ * would triple the palette and let the shades drift out of step with the
+ * colours they are supposed to be shades of.
+ */
+export function shade(hex: string, factor: number): string {
+  const n = Number.parseInt(hex.slice(1), 16);
+  if (!Number.isFinite(n)) return hex;
+  const clamp = (v: number): number => Math.max(0, Math.min(255, Math.round(v)));
+  const r = clamp(((n >> 16) & 255) * factor);
+  const g = clamp(((n >> 8) & 255) * factor);
+  const b = clamp((n & 255) * factor);
+  return `rgb(${r}, ${g}, ${b})`;
+}
+
 /** Deterministic pseudo-randomness, so the decorative art never shifts. */
 export function seeded(seed: number): () => number {
   let s = seed >>> 0;

@@ -250,6 +250,8 @@ export interface Table {
   warpPath?: Vec2[];
   /** Where the habitrail splits, so the diverter blade can be drawn on it. */
   warpFork?: Vec2;
+  /** What the diverter is called, printed at the ramp mouth when it is armed. */
+  warpLabel?: string;
   /**
    * Index of the fork in both paths. Everything before it is the same wire,
    * which is what lets the renderer draw one trunk and two branches instead of

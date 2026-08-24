@@ -258,6 +258,7 @@ export function buildOrbitTable(): Table {
     rampPath,
     warpPath,
     warpFork,
+    warpLabel: 'WARP',
     warpForkIndex,
     rollovers,
     missionLamps,
