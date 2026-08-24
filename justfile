@@ -7,9 +7,18 @@ default:
 setup:
     npm install
 
-# Typecheck the project.
+# Format every file in place.
+fmt:
+    npm run fmt
+
+# Typecheck the project and check formatting.
 lint:
     npm run typecheck
+    npm run fmt:check
+
+# Audit the dependency tree.
+security:
+    npm run security
 
 # Run the unit tests.
 test:
@@ -41,7 +50,7 @@ smoke: build
     node scripts/smoke.mjs http://localhost:4173/ screenshots
 
 # Everything CI runs.
-check: lint test build
+check: lint security test build
 
 # Remove build output and installed packages.
 clean:
