@@ -8,15 +8,15 @@ and every sound is synthesised as the game runs.
 
 ## Controls
 
-| Action | Desktop | Touch |
-| --- | --- | --- |
-| Left flipper | `Z`, `←`, or left `Shift` | Tap the left half of the screen |
-| Right flipper | `/`, `→`, or right `Shift` | Tap the right half |
-| Plunger | Hold `Space`, release to fire | Hold anywhere, release to fire |
-| Nudge | `X` and `.` | Tap the top strip, or shake the device |
-| New game | `Enter` | Tap the attract screen |
-| Sound effects on/off | `S` | Speaker button, top right |
-| Music on/off | `M` | Note button, top right |
+| Action               | Desktop                       | Touch                                  |
+| -------------------- | ----------------------------- | -------------------------------------- |
+| Left flipper         | `Z`, `←`, or left `Shift`     | Tap the left half of the screen        |
+| Right flipper        | `/`, `→`, or right `Shift`    | Tap the right half                     |
+| Plunger              | Hold `Space`, release to fire | Hold anywhere, release to fire         |
+| Nudge                | `X` and `.`                   | Tap the top strip, or shake the device |
+| New game             | `Enter`                       | Tap the attract screen                 |
+| Sound effects on/off | `S`                           | Speaker button, top right              |
+| Music on/off         | `M`                           | Note button, top right                 |
 
 Both audio settings are remembered between visits.
 

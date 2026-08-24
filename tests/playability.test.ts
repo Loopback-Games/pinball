@@ -272,7 +272,10 @@ describe('the rules are reachable', () => {
     const multiballs = games.reduce((a, g) => a + g.multiballs, 0);
     const detail = games.map((g) => `${g.missions}m/${g.multiballs}mb`).join(' ');
 
-    expect(games.every((g) => g.score > 0), detail).toBe(true);
+    expect(
+      games.every((g) => g.score > 0),
+      detail,
+    ).toBe(true);
     expect(withMission, `games reaching a mission: ${detail}`).toBeGreaterThanOrEqual(8);
     expect(multiballs, `multiballs started: ${detail}`).toBeGreaterThanOrEqual(1);
   }, 120_000);

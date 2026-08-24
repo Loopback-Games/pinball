@@ -7,7 +7,7 @@ Status: Approved for implementation
 
 A pinball game that runs in a browser on both phones and desktops, hosted on
 GitHub Pages, built entirely from free or procedurally generated assets, with
-depth comparable to *3D Pinball for Windows — Space Cadet*.
+depth comparable to _3D Pinball for Windows — Space Cadet_.
 
 "Comparable to Space Cadet" is the bar for scope, not for art style. It means:
 a single well-populated table, a mission/rank progression, multiball, bonus
@@ -33,7 +33,7 @@ render/       canvas painting, HUD, effects
 
 `engine/` knows nothing about the table, the score, or the canvas. It
 integrates a ball against a list of colliders and reports the collisions it
-resolved. `game/` owns what those collisions *mean*. `render/` reads state and
+resolved. `game/` owns what those collisions _mean_. `render/` reads state and
 never writes it. This is what makes the physics unit-testable in Vitest with no
 DOM.
 

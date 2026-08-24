@@ -467,9 +467,7 @@ export class Game {
   private rotateLanes(direction: number): void {
     const count = this.table.rollovers.length;
     if (count === 0) return;
-    const shifted = [...this.litLanes].map(
-      (i) => (i + direction + count) % count,
-    );
+    const shifted = [...this.litLanes].map((i) => (i + direction + count) % count);
     this.litLanes.clear();
     for (const i of shifted) this.litLanes.add(i);
     this.skillLane = (this.skillLane + direction + count) % count;
@@ -604,10 +602,7 @@ export class Game {
       this.onSound('bumper', clamp(c.impactSpeed / 900, 0.25, 1));
       this.bonusUnits += 1;
       if (this.multiballActive) {
-        this.jackpotValue = Math.min(
-          JACKPOT_MAX,
-          this.jackpotValue + JACKPOT_PER_BUMPER,
-        );
+        this.jackpotValue = Math.min(JACKPOT_MAX, this.jackpotValue + JACKPOT_PER_BUMPER);
       }
       if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'sweep') {
         this.advanceMission(1);
@@ -735,11 +730,7 @@ export class Game {
       if (speed < 200) return;
       this.spinnerIdle = 0;
       this.spinnerValue = Math.min(SPINNER_VALUE_MAX, this.spinnerValue + SPINNER_STEP);
-      this.award(
-        Math.round(this.spinnerValue * clamp(speed / 800, 0.5, 3)),
-        ball.pos,
-        'spin',
-      );
+      this.award(Math.round(this.spinnerValue * clamp(speed / 800, 0.5, 3)), ball.pos, 'spin');
       this.onSound('spinner', clamp(speed / 1600, 0.3, 1));
       this.bonusUnits += 1;
       return;
@@ -1091,8 +1082,7 @@ export class Game {
 
   private endBall(): void {
     // Pay the bonus, then hand over to the next ball.
-    const bonus =
-      Math.min(this.bonusUnits, 99) * SCORE.bonusPerUnit * this.bonusMultiplier;
+    const bonus = Math.min(this.bonusUnits, 99) * SCORE.bonusPerUnit * this.bonusMultiplier;
     if (bonus > 0) {
       this.score += bonus;
       this.setBanner(
@@ -1233,4 +1223,3 @@ const HUES: Record<string, number> = {
 };
 
 const hueFor = (key: string): number => HUES[key] ?? 200;
-

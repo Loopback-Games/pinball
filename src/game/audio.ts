@@ -20,11 +20,56 @@ interface MoodSettings {
 }
 
 const MOODS: Record<MusicMood, MoodSettings> = {
-  attract: { bpm: 84, pad: true, bass: false, arp: true, kick: false, hat: false, snare: false, level: 0.5 },
-  play: { bpm: 104, pad: true, bass: true, arp: false, kick: true, hat: true, snare: false, level: 0.7 },
-  mission: { bpm: 122, pad: true, bass: true, arp: true, kick: true, hat: true, snare: true, level: 0.85 },
-  multiball: { bpm: 138, pad: true, bass: true, arp: true, kick: true, hat: true, snare: true, level: 1 },
-  gameOver: { bpm: 72, pad: true, bass: true, arp: false, kick: false, hat: false, snare: false, level: 0.45 },
+  attract: {
+    bpm: 84,
+    pad: true,
+    bass: false,
+    arp: true,
+    kick: false,
+    hat: false,
+    snare: false,
+    level: 0.5,
+  },
+  play: {
+    bpm: 104,
+    pad: true,
+    bass: true,
+    arp: false,
+    kick: true,
+    hat: true,
+    snare: false,
+    level: 0.7,
+  },
+  mission: {
+    bpm: 122,
+    pad: true,
+    bass: true,
+    arp: true,
+    kick: true,
+    hat: true,
+    snare: true,
+    level: 0.85,
+  },
+  multiball: {
+    bpm: 138,
+    pad: true,
+    bass: true,
+    arp: true,
+    kick: true,
+    hat: true,
+    snare: true,
+    level: 1,
+  },
+  gameOver: {
+    bpm: 72,
+    pad: true,
+    bass: true,
+    arp: false,
+    kick: false,
+    hat: false,
+    snare: false,
+    level: 0.45,
+  },
 };
 
 /**
@@ -99,8 +144,7 @@ export class Audio {
       if (!this.ctx) {
         const Ctor =
           globalThis.AudioContext ??
-          (globalThis as { webkitAudioContext?: typeof AudioContext })
-            .webkitAudioContext;
+          (globalThis as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
         if (!Ctor) {
           this.failed = true;
           return;

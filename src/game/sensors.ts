@@ -20,13 +20,14 @@ export const sensorCircle = (id: string, center: Vec2, radius: number): Sensor =
   radius,
 });
 
-export const sensorRect = (
-  id: string,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-): Sensor => ({ kind: 'rect', id, x, y, w, h });
+export const sensorRect = (id: string, x: number, y: number, w: number, h: number): Sensor => ({
+  kind: 'rect',
+  id,
+  x,
+  y,
+  w,
+  h,
+});
 
 export function sensorContains(s: Sensor, p: Vec2): boolean {
   if (s.kind === 'circle') {

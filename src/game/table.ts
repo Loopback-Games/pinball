@@ -121,9 +121,7 @@ function polyline(
     const a = points[i];
     const b = points[i + 1];
     if (!a || !b) continue;
-    out.push(
-      side === 'right' ? segment(id, a, b, o) : segmentFlipped(id, a, b, o),
-    );
+    out.push(side === 'right' ? segment(id, a, b, o) : segmentFlipped(id, a, b, o));
   }
   return out;
 }
@@ -213,18 +211,12 @@ export function buildTable(): Table {
   /* --- Outer boundary ------------------------------------------------ */
 
   // The dome spans the whole table width and contains the ball from above.
-  colliders.push(
-    arc('wall', DOME_CENTER, DOME_RADIUS, deg(180), deg(360), RAIL),
-  );
+  colliders.push(arc('wall', DOME_CENTER, DOME_RADIUS, deg(180), deg(360), RAIL));
 
   // Left wall, straight down the side of the play area, ending in an apron
   // that funnels the outlane into the same drain as the middle.
   colliders.push(
-    ...polyline(
-      'wall',
-      [vec(PLAY_LEFT, LANE_TOP), vec(PLAY_LEFT, 898), vec(96, 972)],
-      'right',
-    ),
+    ...polyline('wall', [vec(PLAY_LEFT, LANE_TOP), vec(PLAY_LEFT, 898), vec(96, 972)], 'right'),
   );
 
   // The shooter lane divider doubles as the right edge of the play area, and
@@ -297,9 +289,7 @@ export function buildTable(): Table {
 
   // Orbit return. Without it the right-hand channel is a clear run from the
   // top of the table into the outlane, and every launch drains.
-  colliders.push(
-    ...polyline('guide', [vec(LANE_LEFT, 424), vec(468, 502)], 'left', RAIL),
-  );
+  colliders.push(...polyline('guide', [vec(LANE_LEFT, 424), vec(468, 502)], 'left', RAIL));
 
   /* --- Pop bumpers ---------------------------------------------------- */
 
@@ -344,14 +334,11 @@ export function buildTable(): Table {
     return out;
   }
 
-  const dropTargets = bank(
-    'drop',
-    vec(112, 528),
-    vec(170, 452),
-    3,
-    'left',
-    { restitution: 0.3, friction: 0.1, radius: 4 },
-  );
+  const dropTargets = bank('drop', vec(112, 528), vec(170, 452), 3, 'left', {
+    restitution: 0.3,
+    friction: 0.1,
+    radius: 4,
+  });
   const standupTargets = bank(
     'target',
     mirrorPoint(vec(112, 528)),
@@ -403,7 +390,6 @@ export function buildTable(): Table {
     }),
   );
   sensors.push(sensorCircle('saucer', saucerCenter, 23));
-
 
   /* --- Habitrail ramp --------------------------------------------------- */
 
@@ -478,12 +464,10 @@ export function buildTable(): Table {
       ...WALL,
       radius: 5,
     }),
-    ...polyline(
-      'guide',
-      [mirrorPoint(dividerTop), mirrorPoint(dividerBottom)],
-      'left',
-      { ...WALL, radius: 5 },
-    ),
+    ...polyline('guide', [mirrorPoint(dividerTop), mirrorPoint(dividerBottom)], 'left', {
+      ...WALL,
+      radius: 5,
+    }),
   );
 
   // Slingshot bodies. The hypotenuse faces up the playfield and does the work.
@@ -583,9 +567,7 @@ export function buildTable(): Table {
 
   // Sat on the orbit path itself, at the radius a ball actually rides, rather
   // than at the very top of the dome where nothing passes.
-  const missionLamps: Vec2[] = [0, 1, 2, 3, 4].map((i) =>
-    vec(220 + i * 29, 596),
-  );
+  const missionLamps: Vec2[] = [0, 1, 2, 3, 4].map((i) => vec(220 + i * 29, 596));
 
   const rollovers: Vec2[] = [
     vec(300 + Math.cos(deg(255)) * 235, 300 + Math.sin(deg(255)) * 235),

@@ -97,11 +97,7 @@ export class World {
    * behaviour does not change with framerate. `onSubstep` runs before each
    * substep, which is where kinematic bodies update themselves.
    */
-  step(
-    dt: number,
-    balls: readonly Ball[],
-    onSubstep: (h: number) => void,
-  ): Collision[] {
+  step(dt: number, balls: readonly Ball[], onSubstep: (h: number) => void): Collision[] {
     const collisions: Collision[] = [];
     // Clamp the catch-up window; a backgrounded tab must not spiral.
     this.accumulator = Math.min(this.accumulator + dt, 0.1);
@@ -120,10 +116,7 @@ export class World {
   substep(ball: Ball, h: number, out: Collision[]): void {
     const { gravity, drag, maxSpeed } = this.config;
 
-    ball.vel = vec(
-      ball.vel.x + this.nudge.x * h,
-      ball.vel.y + (gravity + this.nudge.y) * h,
-    );
+    ball.vel = vec(ball.vel.x + this.nudge.x * h, ball.vel.y + (gravity + this.nudge.y) * h);
 
     this.separate(ball, out);
 
@@ -139,26 +132,17 @@ export class World {
         clear = true;
         break;
       }
-      ball.pos = vec(
-        ball.pos.x + ball.vel.x * hit.t,
-        ball.pos.y + ball.vel.y * hit.t,
-      );
+      ball.pos = vec(ball.pos.x + ball.vel.x * hit.t, ball.pos.y + ball.vel.y * hit.t);
       remaining -= hit.t;
       this.resolve(ball, hit.collider, hit.normal, hit.point, hit.body, out);
       // Lift off the surface so the next sweep does not start in contact.
-      ball.pos = vec(
-        ball.pos.x + hit.normal.x * SKIN,
-        ball.pos.y + hit.normal.y * SKIN,
-      );
+      ball.pos = vec(ball.pos.x + hit.normal.x * SKIN, ball.pos.y + hit.normal.y * SKIN);
     }
     // Only coast through the leftover time if the sweep proved the path is
     // clear. A ball that used up its iterations is wedged in a corner, and
     // moving it blindly is exactly how it ends up on the wrong side of a wall.
     if (clear && remaining > 0) {
-      ball.pos = vec(
-        ball.pos.x + ball.vel.x * remaining,
-        ball.pos.y + ball.vel.y * remaining,
-      );
+      ball.pos = vec(ball.pos.x + ball.vel.x * remaining, ball.pos.y + ball.vel.y * remaining);
     }
 
     const damping = Math.max(0, 1 - drag * h);

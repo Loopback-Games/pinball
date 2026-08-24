@@ -48,8 +48,10 @@ describe('whatever the player does', () => {
         for (const e of game.balls) {
           const { x, y } = e.ball.pos;
           const { x: vx, y: vy } = e.ball.vel;
-          if (!Number.isFinite(x) || !Number.isFinite(y)) note(`${where}: position is not a number`);
-          if (!Number.isFinite(vx) || !Number.isFinite(vy)) note(`${where}: velocity is not a number`);
+          if (!Number.isFinite(x) || !Number.isFinite(y))
+            note(`${where}: position is not a number`);
+          if (!Number.isFinite(vx) || !Number.isFinite(vy))
+            note(`${where}: velocity is not a number`);
           // The plunger tops out near 2000 and the shove at 1400. Anything
           // past this is the solver having pushed a ball out of a wall.
           const speed = Math.hypot(vx, vy);
@@ -60,7 +62,8 @@ describe('whatever the player does', () => {
           note(`${where}: bonus multiplier ${game.bonusMultiplier}`);
         }
         if (game.ballsRemaining < 0) note(`${where}: ${game.ballsRemaining} balls left`);
-        if (game.missionProgress < 0) note(`${where}: mission progress ${game.missionProgress}`);
+        if (game.missionProgress < 0)
+          note(`${where}: mission progress ${game.missionProgress}`);
         if (game.multiballActive && game.ballsInPlay === 0) {
           note(`${where}: multiball running with an empty table`);
         }

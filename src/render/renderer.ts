@@ -108,9 +108,7 @@ export class Renderer {
     // Portrait screens are taller than the table's aspect ratio allows, so the
     // slack goes above it: the flippers stay in easy thumb reach at the bottom
     // and the score gets the room it frees up.
-    const offsetY = sidePanel
-      ? topPanel + (availH - tableH) / 2 + 8
-      : cssHeight - tableH - 8;
+    const offsetY = sidePanel ? topPanel + (availH - tableH) / 2 + 8 : cssHeight - tableH - 8;
 
     this.layout = {
       scale,
@@ -179,14 +177,7 @@ export class Renderer {
     g.fillRect(0, 0, TABLE_W, 620);
 
     // Vignette towards the drain, so the eye is drawn down the table.
-    const vig = g.createRadialGradient(
-      PLAY_CENTER,
-      420,
-      120,
-      PLAY_CENTER,
-      620,
-      680,
-    );
+    const vig = g.createRadialGradient(PLAY_CENTER, 420, 120, PLAY_CENTER, 620, 680);
     vig.addColorStop(0, 'rgba(0,0,0,0)');
     vig.addColorStop(1, 'rgba(0,0,0,0.62)');
     g.fillStyle = vig;
@@ -478,10 +469,7 @@ export class Renderer {
    * They sit above every play zone in the input's hit order, so reaching for
    * them can never nudge the table by accident.
    */
-  private drawAudioButtons(
-    ctx: CanvasRenderingContext2D,
-    audio: AudioSettings,
-  ): void {
+  private drawAudioButtons(ctx: CanvasRenderingContext2D, audio: AudioSettings): void {
     const size = 38;
     const gap = 8;
     const margin = 12;
@@ -508,9 +496,7 @@ export class Renderer {
       ctx.fillStyle = audible ? 'rgba(24, 40, 78, 0.85)' : 'rgba(14, 18, 32, 0.8)';
       roundRect(ctx, b.x, b.y, b.w, b.h, 10);
       ctx.fill();
-      ctx.strokeStyle = audible
-        ? 'rgba(60, 224, 255, 0.6)'
-        : 'rgba(120, 140, 180, 0.35)';
+      ctx.strokeStyle = audible ? 'rgba(60, 224, 255, 0.6)' : 'rgba(120, 140, 180, 0.35)';
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
@@ -566,11 +552,7 @@ export class Renderer {
     }
   }
 
-  private drawInserts(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    time: number,
-  ): void {
+  private drawInserts(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     // A lit multiball waits at the saucer until the player goes and gets it,
     // so the saucer has to say so for as long as it is waiting. The banner
     // that announces it is gone in three seconds.
@@ -718,11 +700,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawBumpers(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    time: number,
-  ): void {
+  private drawBumpers(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     for (const b of game.table.bumpers) {
       const lit = game.lamps.get(b.id) ?? 0;
       const r = b.radius * (1 + lit * 0.09);
@@ -776,7 +754,14 @@ export class Renderer {
       ctx.moveTo(s.a.x, s.a.y);
       ctx.lineTo(s.c.x, s.c.y);
       ctx.stroke();
-      this.glow(ctx, (s.a.x + s.c.x) / 2, (s.a.y + s.c.y) / 2, 46 * lit, PALETTE.amber, lit * 0.6);
+      this.glow(
+        ctx,
+        (s.a.x + s.c.x) / 2,
+        (s.a.y + s.c.y) / 2,
+        46 * lit,
+        PALETTE.amber,
+        lit * 0.6,
+      );
       ctx.restore();
     }
   }
@@ -824,8 +809,7 @@ export class Renderer {
 
   private drawPlunger(ctx: CanvasRenderingContext2D, game: Game): void {
     // The tip sits just under the ball wherever the pull has taken it.
-    const topY =
-      game.table.plunger.y + game.plungerPower * PLUNGER_TRAVEL + BALL_RADIUS + 2;
+    const topY = game.table.plunger.y + game.plungerPower * PLUNGER_TRAVEL + BALL_RADIUS + 2;
     ctx.save();
     ctx.strokeStyle = PALETTE.railMid;
     ctx.lineWidth = 9;
@@ -938,11 +922,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawBalls(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    onRail: boolean,
-  ): void {
+  private drawBalls(ctx: CanvasRenderingContext2D, game: Game, onRail: boolean): void {
     for (const entry of game.balls) {
       if (entry.mode === 'idle') continue;
       if ((entry.mode === 'rail') !== onRail) continue;
@@ -1035,11 +1015,7 @@ export class Renderer {
 
   /* ------------------------------------------------------------------ */
 
-  private drawHud(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    time: number,
-  ): void {
+  private drawHud(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     const { hud } = this.layout;
     ctx.save();
     ctx.textBaseline = 'top';
@@ -1086,8 +1062,7 @@ export class Renderer {
       for (let i = 0; i < 5; i += 1) {
         ctx.beginPath();
         ctx.arc(x + 82 + i * 15, y + 5, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle =
-          i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+        ctx.fillStyle = i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
         ctx.fill();
       }
       y += 34;
@@ -1122,7 +1097,6 @@ export class Renderer {
     }
     if (game.tilted) this.drawTilt(ctx, time);
   }
-
 
   /**
    * The score display above the table on portrait screens.
@@ -1202,8 +1176,7 @@ export class Renderer {
       const cx = x + pad + 48 + i * 15;
       ctx.beginPath();
       ctx.arc(cx, cursor + 5, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle =
-        i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+      ctx.fillStyle = i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
       ctx.fill();
     }
     ctx.textAlign = 'right';
@@ -1301,7 +1274,10 @@ export class Renderer {
       chips.push({ text: `FRENZY ${Math.ceil(game.frenzyTimer)}s`, color: PALETTE.magenta });
     }
     if (game.multiballActive) {
-      chips.push({ text: `JACKPOT ${Math.round(game.jackpotValue / 1000)}K`, color: PALETTE.cyan });
+      chips.push({
+        text: `JACKPOT ${Math.round(game.jackpotValue / 1000)}K`,
+        color: PALETTE.cyan,
+      });
     } else if (game.multiballLit) {
       chips.push({ text: 'MULTIBALL READY', color: PALETTE.cyan });
     }
@@ -1359,11 +1335,7 @@ export class Renderer {
     lines.forEach((line, i) => ctx.fillText(line, x, y + i * 16));
   }
 
-  private drawBanner(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    time: number,
-  ): void {
+  private drawBanner(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     const banner = game.banner;
     if (!banner) return;
     const { offsetX, offsetY, scale } = this.layout;
@@ -1386,11 +1358,7 @@ export class Renderer {
     ctx.restore();
   }
 
-  private drawAttract(
-    ctx: CanvasRenderingContext2D,
-    game: Game,
-    time: number,
-  ): void {
+  private drawAttract(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     const { offsetX, offsetY, scale } = this.layout;
     const cx = offsetX + PLAY_CENTER * scale;
     const cy = offsetY + 430 * scale;

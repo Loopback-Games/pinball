@@ -89,7 +89,11 @@ for (const vp of VIEWPORTS) {
       ballsInPlay: g.ballsInPlay,
       positions: g.balls
         .filter((b) => b.mode !== 'idle')
-        .map((b) => ({ mode: b.mode, x: Math.round(b.ball.pos.x), y: Math.round(b.ball.pos.y) })),
+        .map((b) => ({
+          mode: b.mode,
+          x: Math.round(b.ball.pos.x),
+          y: Math.round(b.ball.pos.y),
+        })),
     };
   });
   console.log(`${vp.name}: ${fps}fps ${JSON.stringify(state)}`);

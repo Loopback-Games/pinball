@@ -1,12 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBall } from '../src/engine/physics.js';
 import { vec } from '../src/engine/vec2.js';
-import {
-  SensorField,
-  sensorCircle,
-  sensorCrossed,
-  sensorRect,
-} from '../src/game/sensors.js';
+import { SensorField, sensorCircle, sensorCrossed, sensorRect } from '../src/game/sensors.js';
 import { Game, noIntents } from '../src/game/game.js';
 import type { Intents } from '../src/game/game.js';
 import { BALL_RADIUS } from '../src/game/table.js';

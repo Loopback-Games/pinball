@@ -99,9 +99,7 @@ describe('table geometry', () => {
         // The slack covers legitimate depenetration, which can move a ball by
         // up to its own radius in a single step.
         const allowed =
-          Math.max(prevSpeed, Math.hypot(ball.vel.x, ball.vel.y)) * H +
-          BALL_RADIUS +
-          6;
+          Math.max(prevSpeed, Math.hypot(ball.vel.x, ball.vel.y)) * H + BALL_RADIUS + 6;
         if (moved > allowed) {
           escapes.push(
             `trial ${trial}: jumped ${moved.toFixed(0)} units in one step, ` +

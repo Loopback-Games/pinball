@@ -198,9 +198,7 @@ describe('multiball jackpots', () => {
     const bumper = game.table.bumpers[1]!;
     placeBall(game, bumper.center.x, bumper.center.y - 60, 0, 500);
     run(game, 1.5);
-    expect(game.jackpotValue).toBeGreaterThanOrEqual(
-      JACKPOT_BASE + JACKPOT_PER_BUMPER,
-    );
+    expect(game.jackpotValue).toBeGreaterThanOrEqual(JACKPOT_BASE + JACKPOT_PER_BUMPER);
   });
 });
 

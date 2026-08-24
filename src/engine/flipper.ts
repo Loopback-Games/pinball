@@ -98,8 +98,7 @@ export class Flipper implements MovingBody {
     const speed = this.pressed ? this.upSpeed : this.downSpeed;
     const delta = target - this.angle;
     const maxStep = speed * h;
-    const applied =
-      Math.abs(delta) <= maxStep ? delta : Math.sign(delta) * maxStep;
+    const applied = Math.abs(delta) <= maxStep ? delta : Math.sign(delta) * maxStep;
     this.angle += applied;
     this.angularVelocity = h > 0 ? applied / h : 0;
     this.refresh();
@@ -118,9 +117,6 @@ export class Flipper implements MovingBody {
     // Points to the side the bat sweeps towards, which is where a ball resting
     // on it sits. Only used to break ties dead on the axis.
     const up = this.activeAngle < this.restAngle ? -1 : 1;
-    this.bat.normal = vec(
-      -Math.sin(this.angle) * up,
-      Math.cos(this.angle) * up,
-    );
+    this.bat.normal = vec(-Math.sin(this.angle) * up, Math.cos(this.angle) * up);
   }
 }

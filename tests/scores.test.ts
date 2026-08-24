@@ -1,9 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import {
-  SCOREBOARD_SIZE,
-  readScoreboard,
-  recordScore,
-} from '../src/game/scores.js';
+import { SCOREBOARD_SIZE, readScoreboard, recordScore } from '../src/game/scores.js';
 
 /** A stand-in for the browser's localStorage, so the tests can drive it. */
 class MemoryStorage {
@@ -57,9 +53,7 @@ describe('the local scoreboard', () => {
     const nowhere = recordScore({ score: 1, rank: 'Cadet', date: '' });
     expect(nowhere.position).toBe(-1);
     // A score that missed the cut must not have displaced anything.
-    expect(readScoreboard().map((e) => e.score)).toEqual(
-      best.board.map((e) => e.score),
-    );
+    expect(readScoreboard().map((e) => e.score)).toEqual(best.board.map((e) => e.score));
   });
 
   it('carries over the single high score kept by older versions', () => {

@@ -98,8 +98,7 @@ export class Input {
   /** Ask for motion access, which iOS only grants from a user gesture. */
   requestMotionAccess(): void {
     const ctor = globalThis.DeviceMotionEvent as
-      | (typeof DeviceMotionEvent & { requestPermission?: () => Promise<string> })
-      | undefined;
+      (typeof DeviceMotionEvent & { requestPermission?: () => Promise<string> }) | undefined;
     if (!ctor) return;
     if (typeof ctor.requestPermission === 'function') {
       ctor

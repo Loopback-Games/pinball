@@ -77,9 +77,7 @@ describe('gravity and restitution', () => {
 
   it('kills bounces below the threshold so resting balls do not jitter', () => {
     const world = new World({ ...DEFAULT_WORLD, drag: 0 });
-    world.statics = [
-      segmentFlipped('floor', vec(0, 300), vec(500, 300), { restitution: 0.5 }),
-    ];
+    world.statics = [segmentFlipped('floor', vec(0, 300), vec(500, 300), { restitution: 0.5 })];
     const ball = createBall(vec(250, 100), 10);
     run(world, ball, 6);
     expect(Math.abs(ball.vel.y)).toBeLessThan(60);
@@ -90,9 +88,7 @@ describe('gravity and restitution', () => {
 describe('kickers', () => {
   it('throws the ball outward with the configured kick', () => {
     const world = new World({ ...DEFAULT_WORLD, gravity: 0, drag: 0 });
-    world.statics = [
-      circle('bumper', vec(250, 250), 20, { restitution: 0.3, kick: 900 }),
-    ];
+    world.statics = [circle('bumper', vec(250, 250), 20, { restitution: 0.3, kick: 900 })];
     const ball = createBall(vec(250, 100), 10);
     ball.vel = vec(0, 400);
     run(world, ball, 0.5);

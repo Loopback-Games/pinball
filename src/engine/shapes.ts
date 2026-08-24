@@ -94,12 +94,7 @@ const surfaceDefaults = (id: string, o: SurfaceOptions = {}): Surface => ({
  * Build a segment. The normal is the left-hand perpendicular of a->b, so
  * winding the table walls consistently puts every normal on the playfield side.
  */
-export function segment(
-  id: string,
-  a: Vec2,
-  b: Vec2,
-  o: SurfaceOptions = {},
-): SegmentCollider {
+export function segment(id: string, a: Vec2, b: Vec2, o: SurfaceOptions = {}): SegmentCollider {
   return {
     ...surfaceDefaults(id, o),
     kind: 'segment',
@@ -218,10 +213,7 @@ export function overlap(c: Collider, p: Vec2, r: number): Contact | null {
       const radial = vec(dx / dist, dy / dist);
       return {
         normal: vec(radial.x * side, radial.y * side),
-        point: vec(
-          c.center.x + radial.x * c.radius,
-          c.center.y + radial.y * c.radius,
-        ),
+        point: vec(c.center.x + radial.x * c.radius, c.center.y + radial.y * c.radius),
         depth: r - Math.abs(d),
       };
     }
@@ -278,13 +270,7 @@ function sweepCircle(
  * Advance a ball of radius `r` from `p` along `v` and report the first contact
  * with `c` within `maxT`, or null if there is none.
  */
-export function sweep(
-  c: Collider,
-  p: Vec2,
-  v: Vec2,
-  r: number,
-  maxT: number,
-): Sweep | null {
+export function sweep(c: Collider, p: Vec2, v: Vec2, r: number, maxT: number): Sweep | null {
   if (!c.enabled) return null;
   switch (c.kind) {
     case 'segment':
@@ -364,13 +350,7 @@ function sweepSegment(
   return best;
 }
 
-function sweepArc(
-  c: ArcCollider,
-  p: Vec2,
-  v: Vec2,
-  r: number,
-  maxT: number,
-): Sweep | null {
+function sweepArc(c: ArcCollider, p: Vec2, v: Vec2, r: number, maxT: number): Sweep | null {
   const dx = p.x - c.center.x;
   const dy = p.y - c.center.y;
   const a = v.x * v.x + v.y * v.y;

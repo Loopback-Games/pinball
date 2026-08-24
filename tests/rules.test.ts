@@ -308,7 +308,13 @@ describe('a second way into the mission system', () => {
       const ny = dx / len;
       for (const side of [1, -1]) {
         const away = BALL_RADIUS + 24;
-        placeBall(game, mid.x + nx * side * away, mid.y + ny * side * away, -nx * side * 500, -ny * side * 500);
+        placeBall(
+          game,
+          mid.x + nx * side * away,
+          mid.y + ny * side * away,
+          -nx * side * 500,
+          -ny * side * 500,
+        );
         run(game, 0.4);
       }
     }
