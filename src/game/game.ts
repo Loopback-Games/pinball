@@ -152,6 +152,16 @@ const CONFINED_RADIUS = 70;
  */
 const CONFINED_SECONDS = 6;
 
+/**
+ * How long a cradle is allowed to last before the table goes looking for the
+ * ball anyway.
+ *
+ * Long enough that no real cradle is ever interrupted — holding a ball on a
+ * bat for twenty seconds is not a shot anyone is setting up — and short enough
+ * that a table which has genuinely stopped comes back to life.
+ */
+export const BALL_SEARCH_SECONDS = 20;
+
 export class Game {
   /** The machine being played: its layout, its art and its campaign. */
   readonly machine: Machine;
@@ -1156,7 +1166,16 @@ export class Game {
       }
       // A ball held still on a raised flipper is a cradle, which is a skill,
       // not a fault. Only shove balls that nothing is deliberately holding.
-      if (e.ball.idleTime > 6 && !this.cradled(p)) {
+      //
+      // But not forever. From here a ball resting on a raised bat and a ball
+      // wedged in the geometry look identical, so the exemption has to expire
+      // the way a real machine's ball search does. Without the ceiling a table
+      // can deadlock: the ball settles on the bat, whatever is holding the
+      // flipper keeps holding it because the ball is there, and nothing ever
+      // moves again. Two machines sat like that for over two and a half
+      // minutes once their physics changed.
+      const held = this.cradled(p);
+      if (e.ball.idleTime > (held ? BALL_SEARCH_SECONDS : 6)) {
         e.ball.vel = vec((this.random() - 0.5) * 600, -500);
         e.ball.idleTime = 0;
       }

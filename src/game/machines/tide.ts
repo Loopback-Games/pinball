@@ -195,6 +195,10 @@ export const TIDEWRECK: Machine = {
   tagline: 'No posts, bumpers in a row, room to move.',
   theme: TIDE_THEME,
   art: TIDE_ART,
+  // Water. The ball falls slowly and the water takes the speed back out of
+  // it, so shots hang and there is time to watch one develop — which is what
+  // the open playfield with no posts is for.
+  physics: { gravity: 1500, drag: 0.26, maxSpeed: 3400 },
   ranks: ['Diver', 'Salvor', 'Bosun', 'Mate', 'Skipper', 'Wreckmaster'],
   missions: MISSIONS,
   buildTable: buildTideTable,

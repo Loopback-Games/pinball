@@ -202,6 +202,10 @@ export const MOLTEN_CORE: Machine = {
   tagline: 'No rail. Four bumpers, eight targets.',
   theme: MOLTEN_THEME,
   art: MOLTEN_ART,
+  // Heavy and lively: the ball falls harder and keeps more of what it has, so
+  // the packed bumper diamond rattles rather than absorbs, and a shot that
+  // gets away from you is gone before you can think about it.
+  physics: { gravity: 1950, drag: 0.15, bounceThreshold: 18 },
   ranks: ['Apprentice', 'Smith', 'Founder', 'Bloomer', 'Master', 'Forgemaster'],
   missions: MISSIONS,
   buildTable: buildMoltenTable,

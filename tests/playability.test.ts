@@ -5,6 +5,7 @@ import type { Intents, SoundName } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
 import type { Machine } from '../src/game/machine.js';
 import { MACHINES } from '../src/game/machines/index.js';
+import { BALL_SEARCH_SECONDS } from '../src/game/game.js';
 import { overlap } from '../src/engine/shapes.js';
 import type { Table } from '../src/game/table.js';
 import { BALL_RADIUS, DRAIN_Y } from '../src/game/table.js';
@@ -200,9 +201,11 @@ for (const machine of MACHINES) {
       // test spent its whole life green while the bot held the plunger down for
       // all three minutes and no ball ever left the shooter lane.
       expect(framesInPlay).toBeGreaterThan(60 * 20);
-      // The stuck-ball recovery shoves any ball idle for six seconds, so nothing
-      // should ever exceed that by much.
-      expect(longestStall).toBeLessThan(7);
+      // The stuck-ball recovery shoves any ball idle for six seconds. A ball
+      // held on a raised bat is a cradle rather than a fault and is left
+      // alone, but only until the ball search gives up on it, so that is the
+      // real ceiling on how long this table can sit still.
+      expect(longestStall).toBeLessThan(BALL_SEARCH_SECONDS + 1);
     });
   });
 
