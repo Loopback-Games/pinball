@@ -40,6 +40,32 @@ export interface Collision {
   ball: Ball;
 }
 
+/**
+ * A rectangle of the playfield that pushes the ball while it is inside it.
+ *
+ * A body force, like gravity and the nudge: it has no surface, so the solver
+ * never sweeps against it, it never bounces the ball, and it never produces a
+ * collision the rule layer would have to filter out. That is also why it is
+ * not a sensor — a sensor fires once when the ball enters, and a current has
+ * to push for as long as the ball is in it.
+ *
+ * The push is horizontal by construction, and that is a safety property rather
+ * than a simplification. A field that could push up the table with more force
+ * than gravity would be a levitation zone: a ball would hang in it forever,
+ * which ends the game in the sense of never ending it. Making the type
+ * incapable of expressing that is stronger than a test asserting it does not
+ * happen.
+ */
+export interface Field {
+  readonly id: string;
+  readonly x: number;
+  readonly y: number;
+  readonly w: number;
+  readonly h: number;
+  /** Sideways acceleration inside, in table units per second squared. */
+  accel: number;
+}
+
 export interface WorldConfig {
   /** Downhill acceleration in table units per second squared. */
   gravity: number;
@@ -85,6 +111,15 @@ export class World {
   movers: MovingBody[] = [];
   /** Sideways acceleration from a nudge, decayed by the game layer. */
   nudge: Vec2 = vec(0, 0);
+  /**
+   * Regions that push the ball while it is inside them.
+   *
+   * Empty on every machine that has no current, so this costs nothing to
+   * carry. Tested at the ball's centre rather than swept: unlike a sensor, a
+   * substep on the wrong side of the edge is a negligible impulse error rather
+   * than a missed event.
+   */
+  fields: Field[] = [];
 
   private accumulator = 0;
 
@@ -116,7 +151,13 @@ export class World {
   substep(ball: Ball, h: number, out: Collision[]): void {
     const { gravity, drag, maxSpeed } = this.config;
 
-    ball.vel = vec(ball.vel.x + this.nudge.x * h, ball.vel.y + (gravity + this.nudge.y) * h);
+    let ax = this.nudge.x;
+    for (const f of this.fields) {
+      if (ball.pos.x < f.x || ball.pos.x > f.x + f.w) continue;
+      if (ball.pos.y < f.y || ball.pos.y > f.y + f.h) continue;
+      ax += f.accel;
+    }
+    ball.vel = vec(ball.vel.x + ax * h, ball.vel.y + (gravity + this.nudge.y) * h);
 
     this.separate(ball, out);
 

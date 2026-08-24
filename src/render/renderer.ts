@@ -393,7 +393,11 @@ export class Renderer {
     this.drawBalls(ctx, game, false);
     this.drawRamp(ctx, game, time);
     this.drawBalls(ctx, game, true);
-    this.art.live.ambient(ctx, { theme: this.theme, table: game.table, time });
+    const live = { theme: this.theme, table: game.table, time };
+    if (game.table.current) {
+      this.art.live.current(ctx, live, game.table.current, game.currentFlow);
+    }
+    this.art.live.ambient(ctx, live);
     this.drawEffects(ctx, game);
     ctx.restore();
 

@@ -173,6 +173,21 @@ export function buildTideTable(): Table {
     spinners,
     saucer: { center: saucerCenter, radius: saucerRadius },
     saucerLabel: 'THE WRECK',
+    // The open water across the middle of the wreck. This is the table with
+    // no posts and room to move, so it is the one that can afford to have the
+    // room taken away for a few seconds at a time.
+    //
+    // The push is well under gravity, so it steers rather than carries, and a
+    // full cycle is four seconds — inside the six the trap detection allows,
+    // because a horizontal current can still pin a ball against a guide and
+    // the reversal is what frees it.
+    current: {
+      region: { x: 140, y: 380, w: 320, h: 130 },
+      push: 780,
+      period: 3.4,
+      turn: 0.6,
+      name: 'The Current',
+    },
     rampPath,
     rollovers,
     missionLamps,

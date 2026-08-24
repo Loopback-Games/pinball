@@ -1,5 +1,5 @@
 import type { Vec2 } from '../engine/vec2.js';
-import type { BumperSpec, Table } from '../game/table.js';
+import type { BumperSpec, CurrentSpec, Table } from '../game/table.js';
 import { PLAY_CENTER, TABLE_H, TABLE_W } from '../game/table.js';
 import { glow, railRibbon, strokeWalls } from './paint.js';
 import type { Theme } from './theme.js';
@@ -54,6 +54,8 @@ export interface LiveArt {
   target(g: Ctx, c: LiveContext, a: Vec2, b: Vec2, color: string, lit: number): void;
   /** Motes drifting over the table. Cheap: see the budget below. */
   ambient(g: Ctx, c: LiveContext): void;
+  /** Only called on a machine whose table declares a current. */
+  current(g: Ctx, c: LiveContext, spec: CurrentSpec, flow: number): void;
 }
 
 export interface MachineArt {
@@ -233,6 +235,11 @@ export const DEFAULT_LIVE: LiveArt = {
 
   ambient() {
     // Nothing drifts on a table that has not said what drifts on it.
+  },
+
+  current() {
+    // Only reached on a machine that declares one, and such a machine is
+    // expected to draw its own.
   },
 };
 

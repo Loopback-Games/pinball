@@ -235,6 +235,30 @@ export interface EruptionSpec {
   name: string;
 }
 
+/**
+ * A band of the playfield that pushes the ball sideways, turning about every
+ * `period` seconds.
+ *
+ * Only the drowned machine has one. The push is horizontal by construction —
+ * see `Field` — because a current that could hold a ball off the playfield is
+ * a mechanic that can stop the game ending.
+ *
+ * `period + turn` matters as much as `push` does. A purely horizontal current
+ * can still pin a ball against a guide, and the reversal is what frees it, so
+ * a full cycle has to finish inside the window the trap detection allows.
+ */
+export interface CurrentSpec {
+  readonly region: { x: number; y: number; w: number; h: number };
+  /** Peak sideways acceleration, units per second squared. Signed. */
+  readonly push: number;
+  /** Seconds the current holds one way before it turns. */
+  readonly period: number;
+  /** Seconds the turn takes, easing through zero. */
+  readonly turn: number;
+  /** What the table calls it. */
+  readonly name: string;
+}
+
 export interface Table {
   colliders: Collider[];
   sensors: Sensor[];
@@ -252,6 +276,8 @@ export interface Table {
   saucerLabel: string;
   /** Sweeping every bumper sets the table off, on a machine that has this. */
   eruption?: EruptionSpec;
+  /** Water moving across the playfield, on a machine that has any. */
+  current?: CurrentSpec;
 
   /**
    * Path a captured ball follows along the habitrail, entry first.
@@ -605,5 +631,31 @@ export function createWorld(table: Table, config: Partial<WorldConfig> = {}): Wo
   const world = new World({ ...DEFAULT_WORLD, ...config });
   world.statics = table.colliders;
   world.movers = table.flippers;
+  if (table.current) {
+    world.fields = [{ id: 'current', ...table.current.region, accel: 0 }];
+  }
   return world;
+}
+
+/**
+ * How hard the current is pushing at `t`, from -1 to 1.
+ *
+ * A hold-turn-hold rather than a sine. A sine spends most of its life at half
+ * strength, which reads as noise; something that holds, turns, and holds again
+ * is something a player can time, which is the entire point of the mechanic.
+ *
+ * Pure, so the shape can be tested without building a table.
+ */
+export function flowAt(t: number, period: number, turn: number): number {
+  const cycle = (period + turn) * 2;
+  const phase = ((t % cycle) + cycle) % cycle;
+  const half = period + turn;
+  const forward = phase < half;
+  const within = forward ? phase : phase - half;
+  const sign = forward ? 1 : -1;
+  if (within < period) return sign;
+  // Ease through zero over `turn` rather than snapping, so the reversal is a
+  // turning tide and not a switch.
+  const k = (within - period) / turn;
+  return sign * Math.cos(k * Math.PI);
 }

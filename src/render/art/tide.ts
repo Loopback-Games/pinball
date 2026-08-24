@@ -210,6 +210,37 @@ export const TIDE_ART: ArtSpec = {
       g.restore();
     },
 
+    current(g, { theme, time }, spec, flow) {
+      // Water moving, drawn as streaks that lean the way it is running and
+      // fade as it turns. A current the player cannot see is a table that
+      // cheats, so this has to be legible at a glance without becoming a
+      // second playfield drawn over the first.
+      const { x, y, w, h } = spec.region;
+      const strength = Math.abs(flow);
+      if (strength < 0.02) return;
+      g.save();
+      g.globalCompositeOperation = 'lighter';
+      g.strokeStyle = withAlpha(theme.primary, 0.06 + strength * 0.16);
+      g.lineCap = 'round';
+      for (let i = 0; i < 9; i += 1) {
+        const ly = y + ((i + 0.5) / 9) * h;
+        // Each streak runs at its own rate, so the band shears rather than
+        // sliding as one sheet.
+        const speed = 60 + (i % 3) * 34;
+        const offset = ((time * speed * Math.sign(flow)) % (w + 120)) - 60;
+        const len = 26 + strength * 52;
+        g.lineWidth = 1.4 + strength * 1.6;
+        for (const k of [0, 1, 2]) {
+          const sx = x + ((offset + (k * (w + 120)) / 3 + w + 120) % (w + 120)) - 30;
+          g.beginPath();
+          g.moveTo(Math.max(x, sx), ly);
+          g.lineTo(Math.min(x + w, sx + len * Math.sign(flow || 1)), ly);
+          g.stroke();
+        }
+      }
+      g.restore();
+    },
+
     ambient(g, { theme, time }) {
       // Silt sinks, bubbles rise, and the shafts breathe over both.
       g.save();

@@ -1,5 +1,5 @@
 import type { Ball, Collision } from '../engine/physics.js';
-import type { World } from '../engine/physics.js';
+import type { Field, World } from '../engine/physics.js';
 import { createBall } from '../engine/physics.js';
 import type { Random } from '../engine/random.js';
 import { mulberry32 } from '../engine/random.js';
@@ -21,6 +21,7 @@ import {
   PLAY_LEFT,
   TABLE_H,
   createWorld,
+  flowAt,
 } from './table.js';
 import type { Machine } from './machine.js';
 import { rankFor } from './machine.js';
@@ -151,7 +152,7 @@ const CONFINED_RADIUS = 70;
  * that the player is not watching a dead table. It used to be nine, which was
  * cover for the notches in the geometry that have since been taken out.
  */
-const CONFINED_SECONDS = 6;
+export const CONFINED_SECONDS = 6;
 
 /**
  * How long a cradle is allowed to last before the table goes looking for the
@@ -257,6 +258,15 @@ export class Game {
   /** While positive, the vent is open. Public: the art and the rules read it. */
   eruptionTimer = 0;
   /**
+   * Which way the water is running and how hard, from -1 to 1.
+   *
+   * Public because the art draws it: a current the player cannot see is a
+   * table that cheats.
+   */
+  currentFlow = 0;
+  private currentTime = 0;
+  private readonly currentField: Field | null;
+  /**
    * Spinner blade angle and how fast it is turning, for the renderer.
    *
    * The spinner used to be painted into the cached static layer, so the one
@@ -315,6 +325,7 @@ export class Game {
     this.spinnerAngle = this.table.spinners.map(() => 0);
     this.spinnerRate = this.table.spinners.map(() => 0);
     this.world = createWorld(this.table, machine.physics ?? {});
+    this.currentField = this.world.fields[0] ?? null;
     this.sensorField = new SensorField(this.table.sensors);
 
     for (let i = 0; i < MAX_BALLS; i += 1) {
@@ -431,6 +442,10 @@ export class Game {
     this.sweptBumpers.clear();
     this.eruptionWindow = 0;
     this.eruptionTimer = 0;
+    // Every ball starts with the tide in the same place, so the shot a player
+    // learns is the shot they get.
+    this.currentTime = 0;
+    this.updateCurrent(0);
     for (const t of this.table.dropTargets) t.collider.enabled = true;
     this.lamps.clear();
   }
@@ -478,6 +493,7 @@ export class Game {
     this.updateFlippers(intents);
     this.updatePlunger(step, intents);
     this.updateNudge(step, intents);
+    this.updateCurrent(step);
 
     const active = this.entries.filter((e) => e.ball.active).map((e) => e.ball);
     // Where each ball started the frame, so the sensors can be tested against
@@ -950,6 +966,23 @@ export class Game {
    * same pattern as the diverter: the rules read the table, never the id of
    * the machine they happen to be running on.
    */
+  /**
+   * Run the tide.
+   *
+   * Applied as a field the solver integrates rather than a shove from here:
+   * the world steps at 480Hz and the game loop at display rate, so a push
+   * applied once a frame would be measurably weaker on a slow device — the
+   * exact failure the substep rate exists to prevent.
+   */
+  private updateCurrent(dt: number): void {
+    const spec = this.table.current;
+    const field = this.currentField;
+    if (!spec || !field) return;
+    this.currentTime += dt;
+    this.currentFlow = flowAt(this.currentTime, spec.period, spec.turn);
+    field.accel = spec.push * this.currentFlow;
+  }
+
   private trackSweep(id: string, at: Vec2): void {
     const spec = this.table.eruption;
     if (!spec) return;
