@@ -470,8 +470,13 @@ export class Game {
     const shifted = [...this.litLanes].map((i) => (i + direction + count) % count);
     this.litLanes.clear();
     for (const i of shifted) this.litLanes.add(i);
+    const wasLit = this.litLanes.size > 0 || this.skillShotTimer > 0;
     this.skillLane = (this.skillLane + direction + count) % count;
-    if (this.phase === 'playing' || this.phase === 'ready') {
+    // The lanes rotate on every flip, but saying so out loud when none of them
+    // is lit and the skill shot has gone is just a second flipper sound on
+    // every press: measured at ten a ball, one for one with the flippers.
+    // Speak only when the player can see something move.
+    if (wasLit && (this.phase === 'playing' || this.phase === 'ready')) {
       this.onSound('laneChange', 0.3);
     }
   }

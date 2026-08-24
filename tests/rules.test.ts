@@ -368,3 +368,55 @@ describe('a second way into the mission system', () => {
     expect(game.missionProgress).toBeGreaterThan(progress);
   });
 });
+
+describe('lane change', () => {
+  /** Press and release a flipper, collecting whatever it sounded like. */
+  function flip(game: Game): string[] {
+    const heard: string[] = [];
+    game.onSound = (name) => heard.push(name);
+    game.update(1 / 60, { ...noIntents(), leftFlipper: true });
+    game.update(1 / 60, noIntents());
+    game.onSound = () => {};
+    return heard;
+  }
+
+  it('stays quiet when there is nothing lit to move', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.litLanes.clear();
+    game.skillShotTimer = 0;
+    // The lanes still rotate; they just do it silently. Announcing it on every
+    // press put a second sound under every flip, ten a ball.
+    expect(flip(game)).not.toContain('laneChange');
+  });
+
+  it('speaks up when a lane is lit', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.skillShotTimer = 0;
+    game.litLanes.add(0);
+    expect(flip(game)).toContain('laneChange');
+  });
+
+  it('speaks up while the skill shot is live', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.litLanes.clear();
+    game.skillShotTimer = 5;
+    expect(flip(game)).toContain('laneChange');
+  });
+
+  it('still moves the skill lane when it is silent', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.litLanes.clear();
+    game.skillShotTimer = 0;
+    const before = game.skillLane;
+    flip(game);
+    expect(game.skillLane).not.toBe(before);
+  });
+});
