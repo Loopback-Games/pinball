@@ -130,6 +130,21 @@ is about not stranding the player:
   the game playable.
 - Missing `DeviceMotionEvent` permission simply means no shake-to-nudge.
 
+## Two invariants worth stating
+
+**The drain gap must admit the ball.** Flipper pivot separation minus twice the
+horizontal reach minus twice the bat radius is the clear gap between the tips.
+It has to exceed a ball diameter or the centre drain does not exist, and the
+only way to lose a ball is an outlane. That is invisible in a screenshot and
+changes everything about how the game plays, so it is asserted in the tests.
+
+**No feature may sustain a ball indefinitely.** The two slingshots face each
+other, and a kick that fully replaces the energy a bounce loses lets a ball
+rally between them for as long as the game runs, with the player unable to
+intervene. Each slingshot goes dead for a moment after firing, so a rally
+decays. A test plays a whole game without touching a flipper and requires it to
+reach game over.
+
 ## Testing
 
 Vitest, no DOM required for the layers that matter.

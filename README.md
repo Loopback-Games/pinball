@@ -106,6 +106,13 @@ balls around the table at up to 3800 units per second to prove it.
 `src/game/table.ts`, and the rule layer reacts to collider ids. The solver knows
 nothing about scoring and the renderer never writes state.
 
+**The lower playfield has invariants.** The gap between the flipper tips has to
+be wider than the ball, or the centre drain silently does not exist and only an
+outlane can ever end a ball. Nothing on the table may sustain a ball on its own
+either: two slingshots facing each other will rally forever unless each goes
+dead for a moment after firing. Both are asserted in the tests, because both are
+invisible in a screenshot and both change the entire feel of the game.
+
 **Shots are tested, not eyeballed.** `tests/playability.test.ts` fans a ball out
 from each flipper across every angle and speed and asserts that every feature is
 reachable. This caught a post standing in the ramp mouth that had made the ramp

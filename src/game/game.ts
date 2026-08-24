@@ -38,6 +38,8 @@ import {
   SCORE_KICKBACK,
   SCORE_SKILL_SHOT,
   SKILL_SHOT_SECONDS,
+  SLINGSHOT_KICK,
+  SLINGSHOT_REARM_SECONDS,
   SPINNER_STEP,
   SPINNER_VALUE_MAX,
   TILT_LIMIT,
@@ -186,6 +188,8 @@ export class Game {
   spinnerValue: number = SCORE.spinner;
   private bumperHitsForValue = 0;
   private saucerEjects = 0;
+  /** Seconds left before each slingshot's kick comes back. */
+  private readonly slingRearm = new Map<string, number>();
   private spinnerIdle = 0;
 
   /** Plunger pull, 0 released to 1 fully drawn back. */
@@ -289,11 +293,16 @@ export class Game {
     this.bonusUnits = 0;
     this.tiltWarnings = 0;
     this.tilted = false;
-    this.activeMission = -1;
-    this.missionProgress = 0;
+    // A running mission survives a drain. Clearing it here gave a fifty second
+    // mission only as long as the ball that started it, which on a table where
+    // a ball lasts twenty seconds meant almost nothing ever completed.
     this.dropsDown.clear();
     this.standupsHit.clear();
     this.switchCooldown.clear();
+    this.slingRearm.clear();
+    for (const sling of this.table.slingshots) {
+      for (const face of sling.face) face.kick = SLINGSHOT_KICK;
+    }
     this.bumperHits = 0;
     this.orbitCount = 0;
     this.rampCount = 0;
@@ -334,6 +343,7 @@ export class Game {
   update(dt: number, intents: Intents): void {
     const step = Math.min(dt, 0.05);
     this.tickSwitches(step);
+    this.tickSlingshots(step);
     this.decayLamps(step);
     this.decayEffects(step);
     if (this.banner) {
@@ -497,6 +507,29 @@ export class Game {
     return false;
   }
 
+  /** Kill a slingshot's kick for a moment so rallies decay. */
+  private disarmSlingshot(id: string): void {
+    if ((this.slingRearm.get(id) ?? 0) > 0) return;
+    this.slingRearm.set(id, SLINGSHOT_REARM_SECONDS);
+    const sling = this.table.slingshots.find((s) => s.id === id);
+    if (!sling) return;
+    for (const face of sling.face) face.kick = 0;
+  }
+
+  private tickSlingshots(dt: number): void {
+    for (const [id, remaining] of this.slingRearm) {
+      const next = remaining - dt;
+      if (next > 0) {
+        this.slingRearm.set(id, next);
+        continue;
+      }
+      this.slingRearm.delete(id);
+      const sling = this.table.slingshots.find((s) => s.id === id);
+      if (!sling) continue;
+      for (const face of sling.face) face.kick = SLINGSHOT_KICK;
+    }
+  }
+
   private tickSwitches(dt: number): void {
     for (const [id, remaining] of this.switchCooldown) {
       const next = remaining - dt;
@@ -532,6 +565,10 @@ export class Game {
       return;
     }
     if (id.startsWith('sling-')) {
+      // Fire, then disarm briefly. A slingshot that can throw again the
+      // instant the ball touches it will rally with the one opposite for as
+      // long as the game runs, and the player never gets the ball back.
+      this.disarmSlingshot(id);
       if (this.debounced(id, 0.14)) return;
       this.lamps.set(id, 1);
       this.award(SCORE.slingshot, c.point, 'sling');
@@ -740,14 +777,8 @@ export class Game {
       this.startMultiball();
       return;
     }
-    const next = this.missionsCompleted % MISSIONS.length;
-    this.activeMission = next;
-    this.missionProgress = 0;
-    this.missionTimer = MISSION_SECONDS;
-    const spec = MISSIONS[next];
     this.award(SCORE.saucerBase, this.table.saucer.center, 'saucer');
-    this.onSound('mission', 1);
-    if (spec) this.setBanner(spec.name, spec.brief, 4);
+    this.beginMission(this.missionsCompleted % MISSIONS.length);
   }
 
   private advanceMission(amount: number): void {
@@ -765,6 +796,33 @@ export class Game {
     this.award(SCORE.missionComplete, this.table.saucer.center, 'complete');
     this.onSound('complete', 1);
     this.setBanner(`${spec.name} complete`, `Promoted to ${this.rank}`, 4);
+
+    // Reaching the rank that lights multiball starts it there and then.
+    if (this.missionsCompleted >= MISSIONS_FOR_MULTIBALL && !this.multiballActive) {
+      if (this.ballsInPlay === 1) {
+        this.startMultiball();
+        return;
+      }
+    }
+
+    // The campaign chains: finishing one mission starts the next straight
+    // away. Requiring a fresh saucer shot for every rank meant the shot that
+    // gates all of them had to be made four or five times in a game, and
+    // almost nobody saw past the first.
+    if (this.missionsCompleted < MISSIONS.length) {
+      this.beginMission(this.missionsCompleted % MISSIONS.length);
+    }
+  }
+
+  /** Put a mission on the clock and announce it. */
+  private beginMission(index: number): void {
+    const spec = MISSIONS[index];
+    if (!spec) return;
+    this.activeMission = index;
+    this.missionProgress = 0;
+    this.missionTimer = MISSION_SECONDS;
+    this.onSound('mission', 1);
+    this.setBanner(spec.name, spec.brief, 4);
   }
 
   /** Run down everything that expires on its own. */

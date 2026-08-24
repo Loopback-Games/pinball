@@ -150,3 +150,53 @@ describe('table geometry', () => {
     expect(ball.pos.x).toBeLessThan(500);
   });
 });
+
+describe('the drain', () => {
+  it('leaves a gap between the flippers the ball can actually fall through', () => {
+    const table = buildTable();
+    const left = table.leftFlipper;
+    const right = table.rightFlipper;
+
+    for (const pressed of [false, true]) {
+      left.pressed = pressed;
+      right.pressed = pressed;
+      for (let i = 0; i < 200; i += 1) {
+        left.step(H);
+        right.step(H);
+      }
+      const batRadius = (left.pivotRadius + left.tipRadius) / 2;
+      const clear = right.tip.x - left.tip.x - batRadius * 2;
+      // A sealed drain is invisible in a screenshot and changes the whole
+      // game: with nowhere to lose a ball down the middle, only the outlanes
+      // can end a ball and play never really ends.
+      expect(clear).toBeGreaterThan(BALL_RADIUS * 2);
+    }
+    left.pressed = false;
+    right.pressed = false;
+  });
+
+  it('drains a ball rolling down the middle, wherever in the gap it enters', () => {
+    const table = buildTable();
+    const centre = (table.leftFlipper.tip.x + table.rightFlipper.tip.x) / 2;
+
+    for (let offset = -10; offset <= 10; offset += 5) {
+      const world = new World(DEFAULT_WORLD);
+      world.statics = table.colliders;
+      world.movers = table.flippers;
+      const ball = createBall(vec(centre + offset, 700), BALL_RADIUS);
+      ball.vel = vec(0, 400);
+
+      const events: Collision[] = [];
+      let drained = false;
+      for (let i = 0; i < 480 * 6; i += 1) {
+        for (const f of table.flippers) f.step(H);
+        world.substep(ball, H, events);
+        if (ball.pos.y > DRAIN_Y) {
+          drained = true;
+          break;
+        }
+      }
+      expect(drained, `a ball entering at offset ${offset} never drained`).toBe(true);
+    }
+  });
+});

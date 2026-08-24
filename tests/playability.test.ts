@@ -109,3 +109,25 @@ describe('endurance', () => {
     expect(longestStall).toBeLessThan(7);
   });
 });
+
+describe('a game always ends', () => {
+  it('reaches game over even if the player never touches a flipper', () => {
+    const game = new Game();
+    game.startGame();
+
+    // Hold the plunger only, so every ball is launched and then abandoned.
+    const launchOnly: Intents = { ...noIntents(), plunger: true };
+    let seconds = 0;
+    for (let i = 0; i < 60 * 240; i += 1) {
+      if (game.phase === 'gameOver') break;
+      seconds = i / 60;
+      const intents = game.phase === 'ready' && i % 90 < 60 ? launchOnly : noIntents();
+      game.update(1 / 60, intents);
+    }
+
+    // The two slingshots face each other. Before they were made to go dead for
+    // a moment after firing, a ball could rally between them indefinitely: it
+    // never came back down to the flippers and the game ran forever.
+    expect(game.phase, `still playing after ${seconds.toFixed(0)}s`).toBe('gameOver');
+  });
+});

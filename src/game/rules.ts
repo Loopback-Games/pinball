@@ -45,9 +45,10 @@ export interface MissionSpec {
  * The mission list doubles as the rank ladder: each completion promotes the
  * player one step, in the spirit of Space Cadet's rank progression.
  *
- * They are ordered by difficulty, easiest first. A player always meets the
- * first one first, so if that one is hard nobody ever sees the rest of the
- * table's rules, multiball included.
+ * They are ordered by how often the table actually gives you the shot, easiest
+ * first, measured from bot play rather than guessed. A player always meets the
+ * first one first, so if the early ones are hard nobody ever sees the rest of
+ * the rules, multiball included.
  */
 export const MISSIONS: readonly MissionSpec[] = [
   {
@@ -57,16 +58,16 @@ export const MISSIONS: readonly MissionSpec[] = [
     target: 3,
   },
   {
-    id: 'sweep',
-    name: 'Bumper Sweep',
-    brief: 'Strike the pop bumpers 6 times',
-    target: 6,
-  },
-  {
     id: 'fuel',
     name: 'Fuel Cells',
     brief: 'Drop all three fuel targets',
     target: 3,
+  },
+  {
+    id: 'sweep',
+    name: 'Bumper Sweep',
+    brief: 'Strike the pop bumpers 5 times',
+    target: 5,
   },
   {
     id: 'ramp',
@@ -130,3 +131,14 @@ export const FRENZY_MULTIPLIER = 2;
 
 /** Hits on the drop bank needed to relight the outlane kickback. */
 export const SCORE_KICKBACK = 5_000;
+
+/** Outward impulse a slingshot imparts, in table units per second. */
+export const SLINGSHOT_KICK = 560;
+/**
+ * How long a slingshot stays dead after firing.
+ *
+ * The two face each other. Without this, a ball rallies between them
+ * indefinitely: each kick replaces the energy the bounce lost, the player never
+ * gets the ball back, and the game cannot end.
+ */
+export const SLINGSHOT_REARM_SECONDS = 0.6;

@@ -4,6 +4,7 @@ import { arc, circle, segment, segmentFlipped } from '../engine/shapes.js';
 import type { SurfaceOptions } from '../engine/shapes.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { lerp, vec } from '../engine/vec2.js';
+import { SLINGSHOT_KICK } from './rules.js';
 import type { Sensor } from './sensors.js';
 import { sensorCircle, sensorRect } from './sensors.js';
 
@@ -145,6 +146,12 @@ export interface SlingshotSpec {
   a: Vec2;
   b: Vec2;
   c: Vec2;
+  /**
+   * The kicking face. The rule layer disarms it briefly after it fires: the
+   * two slingshots point at each other, and one that can re-fire instantly
+   * keeps a ball rallying between them for as long as the game runs.
+   */
+  face: Collider[];
 }
 
 export interface Table {
@@ -371,6 +378,7 @@ export function buildTable(): Table {
   );
   sensors.push(sensorCircle('saucer', saucerCenter, 23));
 
+
   /* --- Habitrail ramp --------------------------------------------------- */
 
   // Entry funnel on the right, feeding a wire ramp that returns the ball to the
@@ -440,25 +448,27 @@ export function buildTable(): Table {
   const slingB = vec(100, 792);
   const slingC = vec(182, 806);
   const slingshots: SlingshotSpec[] = [
-    { id: 'sling-left', a: slingA, b: slingB, c: slingC },
+    { id: 'sling-left', a: slingA, b: slingB, c: slingC, face: [] },
     {
       id: 'sling-right',
       a: mirrorPoint(slingA),
       b: mirrorPoint(slingB),
       c: mirrorPoint(slingC),
+      face: [],
     },
   ];
   for (const s of slingshots) {
     const kicking: SurfaceOptions = {
-      restitution: 0.5,
-      friction: 0.05,
-      kick: 620,
+      restitution: 0.48,
+      friction: 0.06,
+      kick: SLINGSHOT_KICK,
       radius: 5,
     };
     const side = s.id === 'sling-left' ? 'right' : 'left';
     const inner = side === 'right' ? 'left' : 'right';
+    s.face.push(...polyline(s.id, [s.a, s.c], side, kicking));
     colliders.push(
-      ...polyline(s.id, [s.a, s.c], side, kicking),
+      ...s.face,
       ...polyline('wall', [s.c, s.b], inner, { ...WALL, radius: 5 }),
       ...polyline('wall', [s.b, s.a], inner, { ...WALL, radius: 5 }),
     );
@@ -477,9 +487,14 @@ export function buildTable(): Table {
 
   /* --- Flippers ---------------------------------------------------------- */
 
+  // Pivot separation sets the drain gap, which is the whole point of the
+  // lower playfield: tips 68 units of reach apart leave a clear gap of
+  // (separation - 2 * reach - 2 * bat radius). At 168 that came out at 9
+  // units against a 27 unit ball, so nothing could ever drain down the middle
+  // and a ball rolling into it simply sat on the two tips.
   const leftFlipper = new Flipper({
     id: 'flipper-left',
-    pivot: vec(194, 838),
+    pivot: vec(177, 838),
     length: 76,
     pivotRadius: 13,
     tipRadius: 9,
@@ -490,7 +505,7 @@ export function buildTable(): Table {
   });
   const rightFlipper = new Flipper({
     id: 'flipper-right',
-    pivot: mirrorPoint(vec(194, 838)),
+    pivot: mirrorPoint(vec(177, 838)),
     length: 76,
     pivotRadius: 13,
     tipRadius: 9,
