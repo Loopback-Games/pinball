@@ -33,8 +33,11 @@ smoke: build
     set -euo pipefail
     npx vite preview --port 4173 --strictPort >/dev/null 2>&1 &
     server=$!
-    trap 'kill $server' EXIT
-    sleep 2
+    # Ignore a failed kill: the trap runs after the server has usually already
+    # gone, and its failure was the last thing to touch $?, so the recipe
+    # reported a smoke test that had actually passed as a failure.
+    trap 'kill $server 2>/dev/null || true' EXIT
+    npx wait-on -t 60000 http://localhost:4173/
     node scripts/smoke.mjs http://localhost:4173/ screenshots
 
 # Everything CI runs.
