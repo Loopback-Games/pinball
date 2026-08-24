@@ -145,6 +145,33 @@ Vitest, no DOM required for the layers that matter.
 - Rendering and input are verified by running the real game in a browser via
   Playwright rather than by unit test.
 
+## Audio
+
+Two gain buses hang off the destination: one for effects, one for music. A
+preference toggles its bus rather than muting a shared master, so either can be
+silenced without touching the other, and both persist in `localStorage`.
+
+The score is generative rather than a loop. A four-bar chord progression drives
+a pad, a bass, an arpeggio and a drum kit, and a mood — attract, play, mission,
+multiball, game over — selects the tempo and which layers play. Notes are queued
+a quarter of a second ahead against `AudioContext.currentTime` rather than being
+triggered from the frame loop, so a long frame cannot make the beat stumble.
+
+## Dynamic scoring
+
+Fixed values make a table feel static, so most of what the player earns moves:
+
+- A ball save window at the start of each ball.
+- A combo chain across the table's real shots, multiplying every score while it
+  lasts. Continuous features such as the spinner are deliberately excluded: they
+  fire often enough that including them pinned the multiplier at its ceiling.
+- A skill shot on a flashing lane after each launch, with lane change on the
+  flipper buttons so the player can aim it.
+- A frenzy that doubles scoring for a fixed time.
+- A kickback guarding the live outlane.
+- Escalating pop bumper and spinner values.
+- A multiball jackpot grown by bumper hits and collected at the ramp or saucer.
+
 ## Deployment
 
 GitHub Actions builds with Vite and publishes to GitHub Pages via the official

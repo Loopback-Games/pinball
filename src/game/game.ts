@@ -2,6 +2,7 @@ import type { Ball, Collision } from '../engine/physics.js';
 import { createBall, World, DEFAULT_WORLD } from '../engine/physics.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp, distance, lerp, vec } from '../engine/vec2.js';
+import type { MusicMood } from './audio.js';
 import { SensorField } from './sensors.js';
 import type { Table } from './table.js';
 import {
@@ -18,11 +19,27 @@ import {
 } from './table.js';
 import {
   BALLS_PER_GAME,
+  BALL_SAVE_SECONDS,
+  BUMPER_STEP,
+  BUMPER_VALUE_MAX,
+  COMBO_MAX,
+  COMBO_SECONDS,
+  COMBO_STEP,
   EXTRA_BALL_AT,
+  FRENZY_MULTIPLIER,
+  FRENZY_SECONDS,
+  JACKPOT_BASE,
+  JACKPOT_MAX,
+  JACKPOT_PER_BUMPER,
   MISSIONS,
   MISSIONS_FOR_MULTIBALL,
   MISSION_SECONDS,
   SCORE,
+  SCORE_KICKBACK,
+  SCORE_SKILL_SHOT,
+  SKILL_SHOT_SECONDS,
+  SPINNER_STEP,
+  SPINNER_VALUE_MAX,
   TILT_LIMIT,
   rankFor,
 } from './rules.js';
@@ -75,7 +92,14 @@ export type SoundName =
   | 'complete'
   | 'tilt'
   | 'extraBall'
-  | 'gameOver';
+  | 'gameOver'
+  | 'combo'
+  | 'skillShot'
+  | 'jackpot'
+  | 'kickback'
+  | 'ballSave'
+  | 'frenzy'
+  | 'laneChange';
 
 type BallMode = 'idle' | 'lane' | 'play' | 'saucer' | 'rail';
 
@@ -136,6 +160,34 @@ export class Game {
 
   multiballActive = false;
 
+  /* --- dynamic scoring ------------------------------------------- */
+
+  /** While positive, a drain returns the ball instead of ending it. */
+  ballSaveTimer = 0;
+  /** Consecutive major shots, and the time left to extend the chain. */
+  comboCount = 0;
+  comboTimer = 0;
+  bestCombo = 0;
+  /** While positive, the flashing lane pays the skill shot. */
+  skillShotTimer = 0;
+  /** Which rollover lane is flashing for the skill shot. */
+  skillLane = 1;
+  /** Rollover lanes collected this cycle, by index. Rotated by lane change. */
+  readonly litLanes = new Set<number>();
+  /** Ready to fire once, saving a ball from the left outlane. */
+  kickbackLit = false;
+  /** Current multiball jackpot, grown by bumper hits. */
+  jackpotValue = JACKPOT_BASE;
+  /** While positive, every score is doubled. */
+  frenzyTimer = 0;
+  /** Pop bumper value, which climbs as they are worked. */
+  bumperValue: number = SCORE.bumper;
+  /** Spinner value, which climbs while it keeps spinning. */
+  spinnerValue: number = SCORE.spinner;
+  private bumperHitsForValue = 0;
+  private saucerEjects = 0;
+  private spinnerIdle = 0;
+
   /** Plunger pull, 0 released to 1 fully drawn back. */
   plungerPower = 0;
   private plungerHeld = false;
@@ -147,7 +199,6 @@ export class Game {
 
   private dropsDown = new Set<string>();
   private standupsHit = new Set<string>();
-  private rolloversLit = new Set<string>();
   private bumperHits = 0;
   private orbitCount = 0;
   private rampCount = 0;
@@ -196,6 +247,21 @@ export class Game {
     return rankFor(this.missionsCompleted);
   }
 
+  /** What the score is worth right now, before the base value of the shot. */
+  get shotMultiplier(): number {
+    const frenzy = this.frenzyTimer > 0 ? FRENZY_MULTIPLIER : 1;
+    return frenzy * (1 + Math.min(this.comboCount, COMBO_MAX) * COMBO_STEP);
+  }
+
+  /** How urgent the music should be, given what is happening on the table. */
+  get musicMood(): MusicMood {
+    if (this.phase === 'attract') return 'attract';
+    if (this.phase === 'gameOver') return 'gameOver';
+    if (this.multiballActive) return 'multiball';
+    if (this.activeMission >= 0 || this.frenzyTimer > 0) return 'mission';
+    return 'play';
+  }
+
   get ballsInPlay(): number {
     return this.entries.filter((e) => e.mode !== 'idle').length;
   }
@@ -227,12 +293,23 @@ export class Game {
     this.missionProgress = 0;
     this.dropsDown.clear();
     this.standupsHit.clear();
-    this.rolloversLit.clear();
     this.switchCooldown.clear();
     this.bumperHits = 0;
     this.orbitCount = 0;
     this.rampCount = 0;
     this.rampValue = SCORE.rampBase;
+    this.ballSaveTimer = 0;
+    this.comboCount = 0;
+    this.comboTimer = 0;
+    this.skillShotTimer = 0;
+    this.litLanes.clear();
+    this.kickbackLit = true;
+    this.jackpotValue = JACKPOT_BASE;
+    this.frenzyTimer = 0;
+    this.bumperValue = SCORE.bumper;
+    this.bumperHitsForValue = 0;
+    this.spinnerValue = SCORE.spinner;
+    this.spinnerIdle = 0;
     for (const t of this.table.dropTargets) t.collider.enabled = true;
     this.lamps.clear();
   }
@@ -292,6 +369,7 @@ export class Game {
 
     this.updateHeldBalls(step);
     this.updateMission(step);
+    this.updateTimers(step);
     this.recoverStrandedBalls(step);
 
     if (this.phase === 'playing' && this.ballsInPlay === 0) this.endBall();
@@ -309,12 +387,35 @@ export class Game {
     const right = live && intents.rightFlipper;
     if (left !== this.table.leftFlipper.pressed && left) {
       this.onSound('flipper', 0.5);
+      this.rotateLanes(-1);
     }
     if (right !== this.table.rightFlipper.pressed && right) {
       this.onSound('flipper', 0.5);
+      this.rotateLanes(1);
     }
     this.table.leftFlipper.pressed = left;
     this.table.rightFlipper.pressed = right;
+  }
+
+  /**
+   * Shift the lit rollover lanes and the flashing skill lane sideways.
+   *
+   * This is lane change: the flipper buttons move the lanes rather than the
+   * ball, so a player can line up the one they still need while the ball is in
+   * the air. It is why the lanes are worth shooting at all.
+   */
+  private rotateLanes(direction: number): void {
+    const count = this.table.rollovers.length;
+    if (count === 0) return;
+    const shifted = [...this.litLanes].map(
+      (i) => (i + direction + count) % count,
+    );
+    this.litLanes.clear();
+    for (const i of shifted) this.litLanes.add(i);
+    this.skillLane = (this.skillLane + direction + count) % count;
+    if (this.phase === 'playing' || this.phase === 'ready') {
+      this.onSound('laneChange', 0.3);
+    }
   }
 
   private updatePlunger(dt: number, intents: Intents): void {
@@ -348,6 +449,8 @@ export class Game {
     this.plungerHeld = false;
     this.plungerPower = 0;
     this.phase = 'playing';
+    this.ballSaveTimer = BALL_SAVE_SECONDS;
+    this.skillShotTimer = SKILL_SHOT_SECONDS;
     this.onSound('launch', power);
   }
 
@@ -408,9 +511,21 @@ export class Game {
       if (this.debounced(id, 0.09)) return;
       this.lamps.set(id, 1);
       this.bumperHits += 1;
-      this.award(SCORE.bumper, c.point, 'bumper');
+      this.bumperHitsForValue += 1;
+      // Worked bumpers pay more, which rewards staying in the nest.
+      this.bumperValue = Math.min(
+        BUMPER_VALUE_MAX,
+        SCORE.bumper + Math.floor(this.bumperHitsForValue / 4) * BUMPER_STEP,
+      );
+      this.award(this.bumperValue, c.point, 'bumper');
       this.onSound('bumper', clamp(c.impactSpeed / 900, 0.25, 1));
       this.bonusUnits += 1;
+      if (this.multiballActive) {
+        this.jackpotValue = Math.min(
+          JACKPOT_MAX,
+          this.jackpotValue + JACKPOT_PER_BUMPER,
+        );
+      }
       if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'sweep') {
         this.advanceMission(1);
       }
@@ -439,7 +554,9 @@ export class Game {
       if (this.dropsDown.size === this.table.dropTargets.length) {
         this.award(SCORE.dropBankComplete, c.point, 'complete');
         this.onSound('complete', 1);
-        this.setBanner('Fuel bank cleared', `+${SCORE.dropBankComplete.toLocaleString()}`);
+        this.registerCombo('Fuel bank', c.point);
+        this.kickbackLit = true;
+        this.setBanner('Fuel bank cleared', 'Kickback lit');
         this.bonusMultiplier = Math.min(this.bonusMultiplier + 1, 8);
         this.dropsDown.clear();
         for (const t of this.table.dropTargets) t.collider.enabled = true;
@@ -462,8 +579,10 @@ export class Game {
         this.standupsHit.add(id);
         if (this.standupsHit.size === this.table.standupTargets.length) {
           this.award(SCORE.standupBankComplete, c.point, 'complete');
-          this.onSound('complete', 1);
-          this.setBanner('Targets locked', 'Saucer lit');
+          this.registerCombo('Target bank', c.point);
+          this.frenzyTimer = FRENZY_SECONDS;
+          this.onSound('frenzy', 1);
+          this.setBanner('FRENZY', `Everything scores x${FRENZY_MULTIPLIER}`, 3);
           this.standupsHit.clear();
         }
       }
@@ -508,7 +627,15 @@ export class Game {
       this.rampValue += SCORE.rampIncrement;
       this.bonusUnits += 3;
       this.onSound('ramp', 1);
-      this.setBanner('Ramp', `+${this.rampValue.toLocaleString()} next`);
+      this.registerCombo('Ramp', ball.pos);
+      if (this.multiballActive) {
+        this.award(this.jackpotValue, ball.pos, 'complete');
+        this.onSound('jackpot', 1);
+        this.setBanner('JACKPOT', `+${this.jackpotValue.toLocaleString()}`, 3);
+        this.jackpotValue = JACKPOT_BASE;
+      } else {
+        this.setBanner('Ramp', `+${this.rampValue.toLocaleString()} next`);
+      }
       if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'ramp') {
         this.advanceMission(1);
       }
@@ -517,30 +644,48 @@ export class Game {
     if (id === 'spinner') {
       const speed = Math.hypot(ball.vel.x, ball.vel.y);
       if (speed < 200) return;
-      this.award(Math.round(SCORE.spinner * clamp(speed / 800, 0.5, 3)), ball.pos, 'spin');
+      this.spinnerIdle = 0;
+      this.spinnerValue = Math.min(SPINNER_VALUE_MAX, this.spinnerValue + SPINNER_STEP);
+      this.award(
+        Math.round(this.spinnerValue * clamp(speed / 800, 0.5, 3)),
+        ball.pos,
+        'spin',
+      );
       this.onSound('spinner', clamp(speed / 1600, 0.3, 1));
       this.bonusUnits += 1;
       return;
     }
     if (id.startsWith('rollover-')) {
+      const index = Number.parseInt(id.slice('rollover-'.length), 10);
       this.lamps.set(id, 1);
       this.award(SCORE.rollover, ball.pos, 'lane');
       this.onSound('rollover', 0.5);
-      this.rolloversLit.add(id);
       this.bonusUnits += 1;
+
+      // The skill shot: the flashing lane, taken soon after launch.
+      if (this.skillShotTimer > 0 && index === this.skillLane) {
+        this.skillShotTimer = 0;
+        this.award(SCORE_SKILL_SHOT, ball.pos, 'complete');
+        this.onSound('skillShot', 1);
+        this.setBanner('Skill shot', `+${SCORE_SKILL_SHOT.toLocaleString()}`, 3);
+      }
+
+      this.litLanes.add(index);
       // The centre rollover taken at speed means the ball came round the dome.
-      if (id === 'rollover-1' && Math.abs(ball.vel.x) > 520) {
+      if (index === 1 && Math.abs(ball.vel.x) > 520) {
         this.orbitCount += 1;
         this.award(SCORE.orbit, ball.pos, 'orbit');
+        this.registerCombo('Orbit', ball.pos);
         this.setBanner('Orbit', `${this.orbitCount} complete`);
         if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'orbit') {
           this.advanceMission(1);
         }
       }
-      if (this.rolloversLit.size >= 3) {
-        this.rolloversLit.clear();
+      if (this.litLanes.size >= this.table.rollovers.length) {
+        this.litLanes.clear();
         this.bonusMultiplier = Math.min(this.bonusMultiplier + 1, 8);
         this.award(SCORE.rolloverSetComplete, ball.pos, 'complete');
+        this.registerCombo('Lanes', ball.pos);
         this.onSound('complete', 1);
         this.setBanner('Lanes complete', `Bonus x${this.bonusMultiplier}`);
       }
@@ -549,6 +694,18 @@ export class Game {
     if (id === 'outlane-left' || id === 'outlane-right') {
       this.lamps.set(id, 1);
       this.bonusUnits += 2;
+      // The kickback guards the right outlane, which is the live one: the
+      // gate at the foot of the left orbit lane makes that side a return.
+      if (id === 'outlane-right' && this.kickbackLit && entry.mode === 'play') {
+        this.kickbackLit = false;
+        // Aimed up and into the playfield rather than straight back up the
+        // orbit lane, which just fed the ball round to the same outlane again.
+        entry.ball.vel = vec(-260, -2150);
+        entry.ball.idleTime = 0;
+        this.award(SCORE_KICKBACK, entry.ball.pos, 'saucer');
+        this.onSound('kickback', 1);
+        this.setBanner('Kickback', 'Saved');
+      }
       return;
     }
     if (id === 'inlane-left' || id === 'inlane-right') {
@@ -561,6 +718,14 @@ export class Game {
   /* ---------------------------------------------------------------- */
 
   private onSaucer(): void {
+    this.registerCombo('Saucer', this.table.saucer.center);
+    if (this.multiballActive) {
+      this.award(this.jackpotValue, this.table.saucer.center, 'complete');
+      this.onSound('jackpot', 1);
+      this.setBanner('JACKPOT', `+${this.jackpotValue.toLocaleString()}`, 3);
+      this.jackpotValue = JACKPOT_BASE;
+      return;
+    }
     if (this.activeMission >= 0) {
       // Landing in the saucer mid-mission banks a step of progress.
       this.advanceMission(1);
@@ -602,6 +767,33 @@ export class Game {
     this.setBanner(`${spec.name} complete`, `Promoted to ${this.rank}`, 4);
   }
 
+  /** Run down everything that expires on its own. */
+  private updateTimers(dt: number): void {
+    if (this.ballSaveTimer > 0) this.ballSaveTimer = Math.max(0, this.ballSaveTimer - dt);
+    if (this.skillShotTimer > 0) this.skillShotTimer = Math.max(0, this.skillShotTimer - dt);
+
+    if (this.comboTimer > 0) {
+      this.comboTimer -= dt;
+      if (this.comboTimer <= 0) {
+        this.comboTimer = 0;
+        this.comboCount = 0;
+      }
+    }
+    if (this.frenzyTimer > 0) {
+      this.frenzyTimer -= dt;
+      if (this.frenzyTimer <= 0) {
+        this.frenzyTimer = 0;
+        this.setBanner('Frenzy over', '');
+      }
+    }
+    // The spinner cools off if it is left alone, so its value has to be earned
+    // again rather than banked for the rest of the ball.
+    this.spinnerIdle += dt;
+    if (this.spinnerIdle > 4 && this.spinnerValue > SCORE.spinner) {
+      this.spinnerValue = Math.max(SCORE.spinner, this.spinnerValue - SPINNER_STEP * dt * 4);
+    }
+  }
+
   private updateMission(dt: number): void {
     if (this.activeMission < 0) return;
     this.missionTimer -= dt;
@@ -638,8 +830,10 @@ export class Game {
         if (e.timer <= 0) {
           e.mode = 'play';
           e.ball.active = true;
-          e.ball.pos = vec(this.table.saucer.center.x, this.table.saucer.center.y + 24);
-          e.ball.vel = vec(120, 900);
+          e.ball.pos = vec(this.table.saucer.center.x, this.table.saucer.center.y + 26);
+          this.saucerEjects += 1;
+          const side = this.saucerEjects % 2 === 0 ? -1 : 1;
+          e.ball.vel = vec(side * 380, 1050);
           e.ball.idleTime = 0;
         }
         continue;
@@ -736,6 +930,18 @@ export class Game {
   }
 
   private drainBall(entry: BallEntry): void {
+    // A ball lost inside the save window comes straight back, which stops a
+    // bad launch ending a ball before the player has touched it.
+    if (this.ballSaveTimer > 0 && !this.multiballActive && this.ballsInPlay <= 1) {
+      this.ballSaveTimer = 0;
+      entry.ball.pos = vec(this.table.plunger.x, this.table.plunger.y);
+      entry.ball.vel = vec(0, -1900);
+      entry.ball.idleTime = 0;
+      entry.confinedTime = 0;
+      this.onSound('ballSave', 1);
+      this.setBanner('Ball saved', 'Shoot again', 2);
+      return;
+    }
     entry.mode = 'idle';
     entry.ball.active = false;
     this.onSound('drain', 0.8);
@@ -792,17 +998,46 @@ export class Game {
 
   /* ---------------------------------------------------------------- */
 
+  /**
+   * Score a shot, scaled by whatever is currently running. The bonus payout
+   * adds to `score` directly instead, because it is already a product of the
+   * units and the bonus multiplier and must not be scaled twice.
+   */
   private award(points: number, at: Vec2, hueKey: string): void {
-    this.score += points;
+    const value = Math.round(points * this.shotMultiplier);
+    this.score += value;
     this.effects.push({
       kind: 'score',
       at,
-      text: `+${points.toLocaleString()}`,
+      text: `+${value.toLocaleString()}`,
       life: 0.9,
       maxLife: 0.9,
       hue: hueFor(hueKey),
     });
     if (this.effects.length > 40) this.effects.shift();
+  }
+
+  /**
+   * Extend the combo chain. Only the table's real shots call this: bumpers and
+   * slingshots happen by accident, and letting them count would mean the chain
+   * never lapsed and the multiplier sat at its ceiling.
+   */
+  private registerCombo(label: string, at: Vec2): void {
+    this.comboCount += 1;
+    this.comboTimer = COMBO_SECONDS;
+    this.bestCombo = Math.max(this.bestCombo, this.comboCount);
+    if (this.comboCount >= 2) {
+      this.onSound('combo', Math.min(1, this.comboCount / COMBO_MAX));
+      this.setBanner(`${this.comboCount}x combo`, label, 1.6);
+      this.effects.push({
+        kind: 'burst',
+        at,
+        text: `COMBO ${this.comboCount}`,
+        life: 0.8,
+        maxLife: 0.8,
+        hue: 45,
+      });
+    }
   }
 
   private setBanner(text: string, sub: string, life = 2.5): void {

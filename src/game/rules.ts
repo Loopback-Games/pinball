@@ -28,7 +28,7 @@ export const TILT_LIMIT = 3;
 /** Seconds a mission runs before it expires. */
 export const MISSION_SECONDS = 50;
 /** Score at which a one-off extra ball is awarded. */
-export const EXTRA_BALL_AT = 350_000;
+export const EXTRA_BALL_AT = 900_000;
 /** Missions completed before the multiball round is lit. */
 export const MISSIONS_FOR_MULTIBALL = 2;
 
@@ -93,3 +93,40 @@ export const RANKS: readonly string[] = [
 
 export const rankFor = (missionsCompleted: number): string =>
   RANKS[Math.min(missionsCompleted, RANKS.length - 1)] ?? 'Cadet';
+
+/* ------------------------------------------------------------------ *
+ * Dynamic scoring
+ * ------------------------------------------------------------------ */
+
+/** Seconds after a ball reaches the playfield during which a drain is refunded. */
+export const BALL_SAVE_SECONDS = 8;
+
+/** How long a combo stays alive between shots. */
+export const COMBO_SECONDS = 4;
+/** Each link adds this much to the shot multiplier. */
+export const COMBO_STEP = 0.35;
+export const COMBO_MAX = 4;
+
+/** Seconds after launch during which the lit lane pays the skill shot. */
+export const SKILL_SHOT_SECONDS = 12;
+export const SCORE_SKILL_SHOT = 25_000;
+
+/** Multiball jackpot, and how much each bumper hit adds to it. */
+export const JACKPOT_BASE = 40_000;
+export const JACKPOT_PER_BUMPER = 1_500;
+export const JACKPOT_MAX = 250_000;
+
+/** Bumpers get more valuable the more they are hit, resetting each ball. */
+export const BUMPER_STEP = 20;
+export const BUMPER_VALUE_MAX = 1_600;
+
+/** A spinner kept moving pays more each pass, decaying when it stops. */
+export const SPINNER_STEP = 60;
+export const SPINNER_VALUE_MAX = 1_400;
+
+/** Every score is doubled while a frenzy runs. */
+export const FRENZY_SECONDS = 18;
+export const FRENZY_MULTIPLIER = 2;
+
+/** Hits on the drop bank needed to relight the outlane kickback. */
+export const SCORE_KICKBACK = 5_000;

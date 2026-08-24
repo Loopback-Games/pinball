@@ -252,8 +252,13 @@ export function buildTable(): Table {
 
   // A one-way gate across the foot of the left orbit lane. A ball shot up the
   // lane passes straight through it; a ball returning down the orbit is caught
-  // and fed into the playfield. Without it the lane is an uninterrupted chute
-  // from the top of the dome into the outlane, and every orbit drains.
+  // and fed into the playfield instead of running straight on into the drain.
+  //
+  // This makes the two sides of the table deliberately different. The left
+  // orbit is the safe shot, returning the ball to the flippers, while the right
+  // side keeps a live outlane. The lane is barely twice the width of the ball,
+  // so a gate here can only send every return to the same place; splitting them
+  // was tried and simply starved whichever side lost.
   colliders.push(
     segment('gate', vec(PLAY_LEFT, 598), vec(96, 668), {
       restitution: 0.45,
@@ -265,7 +270,9 @@ export function buildTable(): Table {
 
   // Orbit return. Without it the right-hand channel is a clear run from the
   // top of the table into the outlane, and every launch drains.
-  colliders.push(...polyline('guide', [vec(LANE_LEFT, 424), vec(468, 502)], 'left', RAIL));
+  colliders.push(
+    ...polyline('guide', [vec(LANE_LEFT, 424), vec(468, 502)], 'left', RAIL),
+  );
 
   /* --- Pop bumpers ---------------------------------------------------- */
 
@@ -402,8 +409,9 @@ export function buildTable(): Table {
   const posts: BumperSpec[] = [
     { id: 'post', center: vec(148, 606), radius: 9 },
     { id: 'post', center: vec(470, 556), radius: 9 },
-    { id: 'post', center: vec(188, 316), radius: 8 },
-    { id: 'post', center: vec(370, 316), radius: 8 },
+    // The pair that used to guard the mouth of the bumper nest is gone. They
+    // narrowed the only corridor into it, and the bumpers are the feature that
+    // most wants traffic.
   ];
   for (const p of posts) {
     colliders.push(circle(p.id, p.center, p.radius, { restitution: 0.7, radius: 0 }));
@@ -496,8 +504,10 @@ export function buildTable(): Table {
 
   sensors.push(
     sensorRect('drain', 92, DRAIN_Y, MIRROR - 184, TABLE_H - DRAIN_Y),
-    sensorRect('outlane-left', PLAY_LEFT, 820, 38, 80),
-    sensorRect('outlane-right', MIRROR - PLAY_LEFT - 38, 820, 38, 80),
+    // The outlane switches sit high enough to catch a ball on its way down,
+    // which is what gives the kickback time to fire.
+    sensorRect('outlane-left', PLAY_LEFT, 770, 38, 150),
+    sensorRect('outlane-right', MIRROR - PLAY_LEFT - 38, 770, 38, 150),
     sensorRect('inlane-left', 64, 820, 34, 60),
     sensorRect('inlane-right', MIRROR - 98, 820, 34, 60),
     sensorRect('lane-exit', LANE_LEFT, LANE_TOP - 30, LANE_RIGHT - LANE_LEFT, 30),

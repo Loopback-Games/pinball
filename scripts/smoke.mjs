@@ -123,6 +123,34 @@ for (const vp of VIEWPORTS) {
   if (audioState !== 'running') {
     problems.push(`audio never started (state: ${audioState})`);
   }
+
+  // The music sequencer must actually be queueing notes, and muting it must
+  // stop that. A silent bug here looks identical to a working game.
+  await page.waitForTimeout(1200);
+  const withMusic = await page.evaluate(() => globalThis.pinball.musicNotes());
+  if (withMusic < 4) problems.push(`music scheduled only ${withMusic} notes`);
+
+  await page.evaluate(() => globalThis.pinball.toggleAudio('music'));
+  await page.waitForTimeout(200);
+  const afterMute = await page.evaluate(() => globalThis.pinball.musicNotes());
+  await page.waitForTimeout(1200);
+  const stillMuted = await page.evaluate(() => globalThis.pinball.musicNotes());
+  console.log(`music notes: ${withMusic} playing, ${stillMuted - afterMute} while muted`);
+  if (stillMuted > afterMute) {
+    problems.push(`music kept playing after being muted (+${stillMuted - afterMute})`);
+  }
+
+  const settings = await page.evaluate(() => globalThis.pinball.audioSettings());
+  if (settings.music !== false) problems.push('music toggle did not stick');
+
+  // The preference has to survive a reload.
+  await page.reload({ waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  const reloaded = await page.evaluate(() => globalThis.pinball.audioSettings());
+  console.log(`after reload: ${JSON.stringify(reloaded)}`);
+  if (reloaded.music !== false) problems.push('music preference did not persist');
+  await page.evaluate(() => globalThis.pinball.toggleAudio('music'));
+
   await page.close();
 }
 

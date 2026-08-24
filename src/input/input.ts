@@ -11,11 +11,17 @@ export interface InputOptions {
   isIdle: () => boolean;
   /** Called on the first interaction of any kind, to unlock audio. */
   onFirstGesture: () => void;
+  /** Which on-screen button, if any, sits at these canvas coordinates. */
+  hitButton: (x: number, y: number) => string | null;
+  /** A button was pressed. */
+  onButton: (id: string) => void;
 }
 
 const LEFT_KEYS = new Set(['ArrowLeft', 'KeyZ', 'KeyA', 'ShiftLeft']);
 const RIGHT_KEYS = new Set(['ArrowRight', 'Slash', 'KeyL', 'ShiftRight']);
-const PLUNGER_KEYS = new Set(['Space', 'ArrowDown', 'KeyS']);
+const PLUNGER_KEYS = new Set(['Space', 'ArrowDown']);
+const SFX_KEYS = new Set(['KeyS']);
+const MUSIC_KEYS = new Set(['KeyM']);
 const NUDGE_LEFT_KEYS = new Set(['KeyX', 'Comma']);
 const NUDGE_RIGHT_KEYS = new Set(['Period', 'KeyC']);
 const START_KEYS = new Set(['Enter', 'NumpadEnter', 'Digit1', 'KeyN']);
@@ -130,6 +136,8 @@ export class Input {
     if (START_KEYS.has(e.code) || (e.code === 'Space' && this.options.isIdle())) {
       this.startRequested = true;
     }
+    if (SFX_KEYS.has(e.code)) this.options.onButton('sfx');
+    if (MUSIC_KEYS.has(e.code)) this.options.onButton('music');
     this.held.add(e.code);
   };
 
@@ -140,6 +148,14 @@ export class Input {
   private readonly onPointerDown = (e: PointerEvent): void => {
     this.firstGesture();
     this.canvas.setPointerCapture?.(e.pointerId);
+    // Buttons win over every play zone, so a thumb reaching for the mute
+    // control never nudges the table instead.
+    const rect = this.canvas.getBoundingClientRect();
+    const button = this.options.hitButton(e.clientX - rect.left, e.clientY - rect.top);
+    if (button) {
+      this.options.onButton(button);
+      return;
+    }
     if (this.options.isIdle()) {
       this.startRequested = true;
       return;

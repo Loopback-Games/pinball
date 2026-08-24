@@ -7,6 +7,7 @@ import {
   LANE_CENTER,
   LANE_FLOOR,
   LANE_RIGHT,
+  MIRROR,
   PLUNGER_TRAVEL,
   PLAY_CENTER,
   PLAY_LEFT,
@@ -17,6 +18,21 @@ import {
 import { MISSIONS } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { PALETTE, seeded } from './palette.js';
+
+/** An on-screen control, in CSS pixels relative to the canvas. */
+interface Button {
+  id: string;
+  x: number;
+  y: number;
+  w: number;
+  h: number;
+}
+
+/** Which audio buses are currently on, so the buttons can show their state. */
+export interface AudioSettings {
+  sfx: boolean;
+  music: boolean;
+}
 
 interface Layout {
   scale: number;
@@ -47,6 +63,7 @@ export class Renderer {
   private width = 0;
   private height = 0;
   private dpr = 1;
+  private buttons: Button[] = [];
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -403,7 +420,15 @@ export class Renderer {
 
   /* ------------------------------------------------------------------ */
 
-  draw(game: Game, time: number): void {
+  /** The button at these canvas coordinates, if any. */
+  hitButton(x: number, y: number): string | null {
+    for (const b of this.buttons) {
+      if (x >= b.x && x <= b.x + b.w && y >= b.y && y <= b.y + b.h) return b.id;
+    }
+    return null;
+  }
+
+  draw(game: Game, time: number, audio: AudioSettings): void {
     const ctx = this.ctx;
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
@@ -423,7 +448,7 @@ export class Renderer {
       ctx.drawImage(this.staticLayer, 0, 0, TABLE_W, TABLE_H);
     }
 
-    this.drawInserts(ctx, game);
+    this.drawInserts(ctx, game, time);
     this.drawTargets(ctx, game);
     this.drawBumpers(ctx, game, time);
     this.drawSlingshotFlash(ctx, game);
@@ -438,10 +463,101 @@ export class Renderer {
     ctx.restore();
 
     this.drawHud(ctx, game, time);
+    this.drawAudioButtons(ctx, audio);
     ctx.restore();
   }
 
-  private drawInserts(ctx: CanvasRenderingContext2D, game: Game): void {
+  /**
+   * Mute controls for effects and music, drawn as their own buttons.
+   *
+   * They sit above every play zone in the input's hit order, so reaching for
+   * them can never nudge the table by accident.
+   */
+  private drawAudioButtons(
+    ctx: CanvasRenderingContext2D,
+    audio: AudioSettings,
+  ): void {
+    const size = 38;
+    const gap = 8;
+    const margin = 12;
+    this.buttons = [
+      { id: 'music', x: this.width - margin - size, y: margin, w: size, h: size },
+      {
+        id: 'sfx',
+        x: this.width - margin - size * 2 - gap,
+        y: margin,
+        w: size,
+        h: size,
+      },
+    ];
+
+    for (const b of this.buttons) {
+      const on = b.id === 'sfx' ? audio.sfx : audio.music;
+      ctx.save();
+      ctx.fillStyle = on ? 'rgba(24, 40, 78, 0.85)' : 'rgba(14, 18, 32, 0.8)';
+      roundRect(ctx, b.x, b.y, b.w, b.h, 10);
+      ctx.fill();
+      ctx.strokeStyle = on ? 'rgba(60, 224, 255, 0.6)' : 'rgba(120, 140, 180, 0.35)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+
+      const cx = b.x + b.w / 2;
+      const cy = b.y + b.h / 2;
+      ctx.strokeStyle = on ? PALETTE.cyan : PALETTE.textDim;
+      ctx.fillStyle = on ? PALETTE.cyan : PALETTE.textDim;
+      ctx.lineWidth = 1.8;
+      ctx.lineCap = 'round';
+
+      if (b.id === 'music') {
+        // A quaver: stem, flag and note head.
+        ctx.beginPath();
+        ctx.moveTo(cx - 3, cy + 6);
+        ctx.lineTo(cx - 3, cy - 8);
+        ctx.lineTo(cx + 6, cy - 11);
+        ctx.lineTo(cx + 6, cy + 3);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(cx - 6, cy + 6, 3.4, 2.6, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(cx + 3, cy + 3, 3.4, 2.6, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+      } else {
+        // A speaker cone with two waves.
+        ctx.beginPath();
+        ctx.moveTo(cx - 9, cy - 3);
+        ctx.lineTo(cx - 5, cy - 3);
+        ctx.lineTo(cx - 1, cy - 8);
+        ctx.lineTo(cx - 1, cy + 8);
+        ctx.lineTo(cx - 5, cy + 3);
+        ctx.lineTo(cx - 9, cy + 3);
+        ctx.closePath();
+        ctx.fill();
+        for (const r of [4, 7.5]) {
+          ctx.beginPath();
+          ctx.arc(cx + 1, cy, r, -0.9, 0.9);
+          ctx.stroke();
+        }
+      }
+
+      if (!on) {
+        // A slash through it, the universal "off".
+        ctx.strokeStyle = '#ff5a6e';
+        ctx.lineWidth = 2.4;
+        ctx.beginPath();
+        ctx.moveTo(b.x + 9, b.y + 9);
+        ctx.lineTo(b.x + b.w - 9, b.y + b.h - 9);
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+  }
+
+  private drawInserts(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    time: number,
+  ): void {
     // Mission lamps: one lights per rank earned, so progress is visible on the
     // playfield rather than only in the score panel.
     for (const [i, p] of game.table.missionLamps.entries()) {
@@ -460,19 +576,49 @@ export class Renderer {
     }
 
     for (const [i, p] of game.table.rollovers.entries()) {
-      const lit = game.lamps.get(`rollover-${i}`) ?? 0;
+      const flash = game.lamps.get(`rollover-${i}`) ?? 0;
+      const collected = game.litLanes.has(i);
+      // The skill lane flashes while the launch window is open, which is the
+      // cue for lane change: the flipper buttons move it under the ball.
+      const skill = game.skillShotTimer > 0 && i === game.skillLane;
       ctx.save();
       ctx.translate(p.x, p.y);
       ctx.beginPath();
       ctx.ellipse(0, 0, 16, 9, 0, 0, Math.PI * 2);
-      ctx.fillStyle = lit > 0 ? PALETTE.amber : 'rgba(255, 190, 90, 0.34)';
-      ctx.globalAlpha = lit > 0 ? 0.35 + lit * 0.65 : 1;
+      const pulse = 0.5 + Math.sin(game.skillShotTimer * 9) * 0.5;
+      ctx.fillStyle = skill
+        ? PALETTE.cyan
+        : collected
+          ? PALETTE.amber
+          : 'rgba(255, 190, 90, 0.28)';
+      ctx.globalAlpha = skill ? 0.4 + pulse * 0.6 : collected ? 1 : 1;
       ctx.fill();
       ctx.strokeStyle = 'rgba(255, 230, 180, 0.8)';
       ctx.lineWidth = 1.4;
       ctx.globalAlpha = 1;
       ctx.stroke();
-      if (lit > 0) this.glow(ctx, 0, 0, 30 * lit, PALETTE.amber, lit * 0.5);
+      if (skill) this.glow(ctx, 0, 0, 40, PALETTE.cyan, 0.35 + pulse * 0.4);
+      else if (collected || flash > 0) {
+        this.glow(ctx, 0, 0, 30 * Math.max(flash, 0.5), PALETTE.amber, 0.4);
+      }
+      ctx.restore();
+    }
+
+    // Kickback lamp, in the left outlane it protects.
+    if (game.kickbackLit) {
+      ctx.save();
+      ctx.translate(MIRROR - 43, 856);
+      const pulse = 0.6 + Math.sin(time * 6) * 0.4;
+      ctx.fillStyle = PALETTE.green;
+      ctx.globalAlpha = pulse;
+      ctx.beginPath();
+      ctx.moveTo(0, -12);
+      ctx.lineTo(9, 6);
+      ctx.lineTo(0, 1);
+      ctx.lineTo(-9, 6);
+      ctx.closePath();
+      ctx.fill();
+      this.glow(ctx, 0, 0, 34, PALETTE.green, pulse * 0.5);
       ctx.restore();
     }
   }
@@ -926,6 +1072,7 @@ export class Renderer {
       ctx.fillText(`UNITS ${game.bonusUnits}`, x + 130, y);
       y += 30;
 
+      y = this.drawStatusChips(ctx, game, x, y, hud.w - 36, mono);
       y = this.drawMissionPanel(ctx, game, x, y, hud.w - 36, mono);
       this.drawMissionList(ctx, game, x, y + 10, mono);
       this.drawControls(ctx, x, hud.y + hud.h - 108, mono);
@@ -1033,6 +1180,7 @@ export class Renderer {
     ctx.textAlign = 'left';
     cursor += 22;
 
+    cursor = this.drawStatusChips(ctx, game, x + pad, cursor, w - pad * 2, mono);
     if (!compact) {
       this.drawMissionPanel(ctx, game, x + pad, cursor, w - pad * 2, mono);
     }
@@ -1092,6 +1240,68 @@ export class Renderer {
     });
   }
 
+  /**
+   * Small pills for whatever modifier is currently running.
+   *
+   * These are all timed or conditional, so the player needs to see at a glance
+   * what is live without reading the banner that just flashed past.
+   */
+  private drawStatusChips(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    x: number,
+    y: number,
+    maxWidth: number,
+    mono: (size: number, weight?: number) => string,
+  ): number {
+    const chips: { text: string; color: string }[] = [];
+    if (game.ballSaveTimer > 0) {
+      chips.push({ text: `SAVE ${Math.ceil(game.ballSaveTimer)}s`, color: PALETTE.green });
+    }
+    if (game.comboCount >= 2) {
+      chips.push({ text: `COMBO ${game.comboCount}x`, color: PALETTE.amber });
+    }
+    if (game.frenzyTimer > 0) {
+      chips.push({ text: `FRENZY ${Math.ceil(game.frenzyTimer)}s`, color: PALETTE.magenta });
+    }
+    if (game.multiballActive) {
+      chips.push({ text: `JACKPOT ${Math.round(game.jackpotValue / 1000)}K`, color: PALETTE.cyan });
+    }
+    if (game.kickbackLit) {
+      chips.push({ text: 'KICKBACK', color: PALETTE.green });
+    }
+    if (game.skillShotTimer > 0) {
+      chips.push({ text: 'SKILL LANE', color: PALETTE.cyan });
+    }
+    if (chips.length === 0) return y;
+
+    ctx.save();
+    ctx.font = mono(10, 700);
+    ctx.textBaseline = 'top';
+    let cx = x;
+    let cy = y;
+    for (const chip of chips) {
+      const w = ctx.measureText(chip.text).width + 14;
+      if (cx + w > x + maxWidth) {
+        cx = x;
+        cy += 20;
+      }
+      ctx.fillStyle = 'rgba(255,255,255,0.08)';
+      roundRect(ctx, cx, cy, w, 16, 8);
+      ctx.fill();
+      ctx.strokeStyle = chip.color;
+      ctx.globalAlpha = 0.75;
+      ctx.lineWidth = 1;
+      ctx.stroke();
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = chip.color;
+      ctx.fillText(chip.text, cx + 7, cy + 3);
+      cx += w + 6;
+    }
+    ctx.restore();
+    return cy + 24;
+  }
+
   private drawControls(
     ctx: CanvasRenderingContext2D,
     x: number,
@@ -1106,6 +1316,7 @@ export class Renderer {
       'SPACE     plunger',
       'X  .      nudge',
       'ENTER     new game',
+      'S  M      sound / music',
     ];
     lines.forEach((line, i) => ctx.fillText(line, x, y + i * 16));
   }

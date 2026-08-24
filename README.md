@@ -15,6 +15,14 @@ and every sound is synthesised as the game runs.
 | Plunger | Hold `Space`, release to fire | Hold anywhere, release to fire |
 | Nudge | `X` and `.` | Tap the top strip, or shake the device |
 | New game | `Enter` | Tap the attract screen |
+| Sound effects on/off | `S` | Speaker button, top right |
+| Music on/off | `M` | Note button, top right |
+
+Both audio settings are remembered between visits.
+
+While the ball is in the air the flipper buttons also work as **lane change**,
+sliding the lit rollover lanes and the flashing skill lane sideways so you can
+line up the one you still need.
 
 Nudging too often tilts the table and kills the flippers until the ball drains,
 exactly as it should.
@@ -23,12 +31,47 @@ exactly as it should.
 
 Three pop bumpers under the dome, two slingshots, a three-bank of drop targets,
 five standup targets, a spinner in the left orbit lane, three rollover lanes
-across the top of the orbit, a mission saucer, and a plastic ramp that returns
-the ball to the left inlane.
+across the top of the orbit, a mission saucer, a kickback guarding the right
+outlane, and a plastic ramp that returns the ball to the left inlane.
 
-Completing a mission promotes you a rank, from Cadet to Admiral. Three missions
+The two sides are deliberately different. The left orbit is the safe shot: a
+one-way gate at the foot of its lane feeds returning balls back to the flippers.
+The right side keeps a live outlane, which is what the kickback is there for.
+
+## Scoring
+
+Nothing on the table is worth a fixed amount for long.
+
+- **Ball save** — the first eight seconds of every ball are free. Drain inside
+  them and the ball comes straight back.
+- **Skill shot** — one rollover lane flashes after each launch. Take it, with
+  lane change if you need to, for 25,000.
+- **Combos** — ramp, orbit, saucer and the two target banks chain. Each link in
+  the chain multiplies every shot until the chain lapses.
+- **Frenzy** — clearing the standup targets doubles everything for eighteen
+  seconds.
+- **Kickback** — lit at the start of each ball and relit by clearing the drop
+  bank, it throws a ball back out of the right outlane once.
+- **Pop bumpers** get more valuable the more you work them, and the **spinner**
+  climbs while you keep it moving and cools off when you don't.
+- **Multiball jackpots** — every bumper hit during multiball grows the jackpot,
+  which the ramp or the saucer collects.
+
+Completing a mission promotes you a rank, from Cadet to Admiral. Two missions
 lights multiball. Clearing the drop targets or the rollover lanes raises the
 bonus multiplier, which is paid out when the ball drains.
+
+## Sound
+
+Both the effects and the score are synthesised at runtime; there are no audio
+files. The music is a four-bar progression in A minor played by a pad, a bass,
+an arpeggio and a drum kit, and the sequencer picks a tempo and a set of layers
+from what is happening on the table — calm in attract, driving in play, faster
+during a mission, flat out in multiball.
+
+Notes are scheduled against the audio clock rather than fired from the frame
+loop, so the beat does not wobble when a frame runs long. Effects and music have
+separate gain buses, which is what lets either be silenced on its own.
 
 ## Running it
 

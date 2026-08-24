@@ -14,10 +14,18 @@ const renderer = new Renderer(canvas);
 const audio = new Audio();
 game.onSound = (name, intensity) => audio.play(name, intensity);
 
+function toggle(id: string): void {
+  audio.resume();
+  if (id === 'sfx') audio.setSfxEnabled(!audio.sfxEnabled);
+  if (id === 'music') audio.setMusicEnabled(!audio.musicEnabled);
+}
+
 const input = new Input(canvas, {
   isReady: () => game.phase === 'ready',
   isIdle: () => game.phase === 'attract' || game.phase === 'gameOver',
   onFirstGesture: () => audio.resume(),
+  hitButton: (x, y) => renderer.hitButton(x, y),
+  onButton: toggle,
 });
 
 function fit(): void {
@@ -41,7 +49,12 @@ function frame(now: number): void {
   elapsed += dt;
 
   game.update(dt, input.sample(dt));
-  renderer.draw(game, elapsed);
+  audio.setMood(game.musicMood);
+  audio.tick();
+  renderer.draw(game, elapsed, {
+    sfx: audio.sfxEnabled,
+    music: audio.musicEnabled,
+  });
   requestAnimationFrame(frame);
 }
 
@@ -49,5 +62,10 @@ requestAnimationFrame(frame);
 
 // Expose the game for debugging without pulling in a dev-only bundle.
 Object.assign(globalThis, {
-  pinball: Object.assign(game, { audioContextState: () => audio.state() }),
+  pinball: Object.assign(game, {
+    audioContextState: () => audio.state(),
+    audioSettings: () => ({ sfx: audio.sfxEnabled, music: audio.musicEnabled }),
+    musicNotes: () => audio.scheduledNotes,
+    toggleAudio: toggle,
+  }),
 });
