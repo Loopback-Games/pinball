@@ -3,31 +3,45 @@ name: Deploy
 on:
   push:
     branches: [main]
+  pull_request:
+    branches: [main]
   workflow_dispatch:
 
-# Least privilege: the job needs to read the repo and mint a Pages deployment.
-permissions:
-  contents: read
-  pages: write
-  id-token: write
+# Nothing is granted by default; each job asks for what it needs.
+permissions: {}
 
 # Never run two deployments at once, and let a newer push supersede a queued
-# one rather than deploying stale output after it.
+# one rather than deploying stale output after it. Keyed by ref so a pull
+# request check cannot cancel a deployment of main.
 concurrency:
-  group: pages
+  group: ${{ github.workflow }}-${{ github.ref }}
   cancel-in-progress: true
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    timeout-minutes: 20
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
     steps:
       - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          # The build never pushes, so leaving a credential in .git/config for
+          # everything downstream to pick up buys nothing.
+          persist-credentials: false
       - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: 24
           cache: npm
       - run: npm ci
       - run: npm run typecheck
+      - run: npm run fmt:check
+      # Fails the build on a high or critical advisory in the toolchain. The
+      # shipped bundle has no dependencies, but everything that produces it
+      # does.
+      - run: npm run security
       - run: npm test
       - run: npm run build
 
@@ -47,14 +61,23 @@ jobs:
           path: screenshots
           retention-days: 7
 
+      # A pull request gets every check above and stops there. Only a push to
+      # main produces a deployable artifact.
       - uses: actions/configure-pages@983d7736d9b0ae728b81ab479565c72886d7745b # v5.0.0
+        if: github.event_name != 'pull_request'
       - uses: actions/upload-pages-artifact@7b1f4a764d45c48632c6b24a0339c27f5614fb0b # v4.0.0
+        if: github.event_name != 'pull_request'
         with:
           path: dist
 
   deploy:
     needs: build
+    if: github.event_name != 'pull_request'
     runs-on: ubuntu-latest
+    timeout-minutes: 10
+    permissions:
+      pages: write
+      id-token: write
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

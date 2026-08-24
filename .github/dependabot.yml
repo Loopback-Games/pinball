@@ -1,0 +1,21 @@
+version: 2
+updates:
+  # The runtime has no dependencies at all; this is the build and test
+  # toolchain, where a stale version is the usual source of a vulnerability
+  # report against a project like this one.
+  - package-ecosystem: npm
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      dev-tooling:
+        patterns: ['*']
+
+  # Actions are pinned by commit digest, which is what stops a moved tag
+  # running someone else's code. The cost of pinning is that nothing updates
+  # on its own, so this is what keeps the digests current.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
