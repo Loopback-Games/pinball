@@ -3,6 +3,8 @@ import { createBall, World, DEFAULT_WORLD } from '../engine/physics.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp, distance, lerp, vec } from '../engine/vec2.js';
 import type { MusicMood } from './audio.js';
+import type { ScoreEntry } from './scores.js';
+import { readScoreboard, recordScore, today } from './scores.js';
 import { SensorField } from './sensors.js';
 import type { Table } from './table.js';
 import {
@@ -147,7 +149,10 @@ export class Game {
 
   phase: Phase = 'attract';
   score = 0;
-  highScore = 0;
+  /** Local scoreboard, best first. Never leaves this browser. */
+  scoreboard: ScoreEntry[] = [];
+  /** Where the game just finished landed on the board, or -1 for nowhere. */
+  scoreboardPosition = -1;
   ballNumber = 1;
   ballsRemaining = BALLS_PER_GAME;
 
@@ -255,11 +260,16 @@ export class Game {
         confinedTime: 0,
       });
     }
-    this.highScore = readHighScore();
+    this.scoreboard = readScoreboard();
   }
 
   get balls(): readonly BallEntry[] {
     return this.entries;
+  }
+
+  /** Top of the local board, which is what the score panel shows. */
+  get highScore(): number {
+    return this.scoreboard[0]?.score ?? 0;
   }
 
   get rank(): string {
@@ -289,6 +299,7 @@ export class Game {
 
   startGame(): void {
     this.score = 0;
+    this.scoreboardPosition = -1;
     this.ballNumber = 1;
     this.ballsRemaining = BALLS_PER_GAME;
     this.missionsCompleted = 0;
@@ -1064,10 +1075,17 @@ export class Game {
       this.phase = 'gameOver';
       this.attractTimer = 0;
       this.onSound('gameOver', 1);
-      if (this.score > this.highScore) {
-        this.highScore = this.score;
-        writeHighScore(this.score);
+      const { board, position } = recordScore({
+        score: this.score,
+        rank: this.rank,
+        date: today(),
+      });
+      this.scoreboard = board;
+      this.scoreboardPosition = position;
+      if (position === 0) {
         this.setBanner('New high score', this.score.toLocaleString(), 6);
+      } else if (position > 0) {
+        this.setBanner(`Board place ${position + 1}`, this.score.toLocaleString(), 6);
       } else {
         this.setBanner('Game over', `Rank: ${this.rank}`, 6);
       }
@@ -1179,23 +1197,3 @@ const HUES: Record<string, number> = {
 
 const hueFor = (key: string): number => HUES[key] ?? 200;
 
-const HIGH_SCORE_KEY = 'loopback-pinball-high-score';
-
-function readHighScore(): number {
-  try {
-    const raw = globalThis.localStorage?.getItem(HIGH_SCORE_KEY);
-    const value = raw ? Number.parseInt(raw, 10) : 0;
-    return Number.isFinite(value) && value > 0 ? value : 0;
-  } catch {
-    // Private browsing and blocked storage are not worth failing over.
-    return 0;
-  }
-}
-
-function writeHighScore(score: number): void {
-  try {
-    globalThis.localStorage?.setItem(HIGH_SCORE_KEY, String(score));
-  } catch {
-    // Ignore: the score simply will not persist.
-  }
-}

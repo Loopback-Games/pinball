@@ -1394,15 +1394,22 @@ export class Renderer {
     const { offsetX, offsetY, scale } = this.layout;
     const cx = offsetX + PLAY_CENTER * scale;
     const cy = offsetY + 430 * scale;
+    const board = game.scoreboard;
+    // The card grows to fit however many scores the board is holding, so a
+    // fresh browser gets a compact title card rather than a panel of blanks.
+    const boardHeight = board.length > 0 ? 34 + board.length * 22 : 0;
+    const top = cy - 120 * scale;
+    const height = (260 + boardHeight) * scale;
+
     ctx.save();
     ctx.textAlign = 'center';
     ctx.fillStyle = 'rgba(3, 6, 16, 0.94)';
     roundRect(
       ctx,
       offsetX + (PLAY_LEFT + 20) * scale,
-      cy - 120 * scale,
+      top,
       (PLAY_RIGHT - PLAY_LEFT - 40) * scale,
-      260 * scale,
+      height,
       16,
     );
     ctx.fill();
@@ -1430,12 +1437,76 @@ export class Renderer {
     ctx.fillText('TAP OR PRESS ENTER', cx, cy + 44 * scale);
     ctx.globalAlpha = 1;
 
+    let cursor = cy + 84 * scale;
+    if (board.length > 0) {
+      cursor = this.drawScoreboard(ctx, game, cx, cursor, scale);
+    }
+
     ctx.fillStyle = PALETTE.textDim;
+    ctx.textAlign = 'center';
     ctx.font = `500 ${Math.round(13 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('Tap left / right to flip', cx, cy + 84 * scale);
-    ctx.fillText('Hold to draw the plunger', cx, cy + 104 * scale);
-    ctx.fillText('Buttons top right mute sound', cx, cy + 124 * scale);
+    ctx.fillText('Tap left / right to flip', cx, cursor);
+    ctx.fillText('Hold to draw the plunger', cx, cursor + 20 * scale);
+    ctx.fillText('Buttons top right mute sound', cx, cursor + 40 * scale);
     ctx.restore();
+  }
+
+  /**
+   * The local scoreboard, best first.
+   *
+   * Kept on this machine and nowhere else, which is why it says so: a board on
+   * a web page usually implies everyone else's scores are on it too.
+   */
+  private drawScoreboard(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    cx: number,
+    y: number,
+    scale: number,
+  ): number {
+    const board = game.scoreboard;
+    const width = (PLAY_RIGHT - PLAY_LEFT - 96) * scale;
+    const left = cx - width / 2;
+    const right = cx + width / 2;
+    let cursor = y;
+
+    ctx.textAlign = 'center';
+    ctx.fillStyle = PALETTE.textDim;
+    ctx.font = `600 ${Math.round(11 * scale)}px ui-monospace, Menlo, monospace`;
+    ctx.fillText('THIS BROWSER', cx, cursor);
+    cursor += 16 * scale;
+
+    ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(left, cursor);
+    ctx.lineTo(right, cursor);
+    ctx.stroke();
+    cursor += 15 * scale;
+
+    const rowFont = `600 ${Math.round(13 * scale)}px ui-monospace, Menlo, monospace`;
+    for (const [i, entry] of board.entries()) {
+      // The game just played is picked out, so a new placing is obvious
+      // without having to remember what the board looked like before.
+      const fresh = game.phase === 'gameOver' && i === game.scoreboardPosition;
+      ctx.font = rowFont;
+      ctx.fillStyle = fresh ? PALETTE.amber : PALETTE.text;
+      ctx.globalAlpha = fresh ? 1 : 0.85;
+
+      ctx.textAlign = 'left';
+      ctx.fillText(`${i + 1}`, left, cursor);
+      ctx.fillText(entry.score.toLocaleString(), left + 20 * scale, cursor);
+
+      ctx.textAlign = 'right';
+      ctx.fillStyle = fresh ? PALETTE.amber : PALETTE.textDim;
+      ctx.font = `500 ${Math.round(11 * scale)}px ui-monospace, Menlo, monospace`;
+      const detail = [entry.rank, entry.date].filter(Boolean).join('  ');
+      if (detail) ctx.fillText(detail, right, cursor);
+
+      ctx.globalAlpha = 1;
+      cursor += 22 * scale;
+    }
+    return cursor + 10 * scale;
   }
 
   private drawTilt(ctx: CanvasRenderingContext2D, time: number): void {
