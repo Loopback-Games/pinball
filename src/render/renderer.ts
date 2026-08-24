@@ -35,6 +35,8 @@ interface Button {
 export interface AudioSettings {
   sfx: boolean;
   music: boolean;
+  /** Whether audio is actually able to make a sound yet. */
+  running: boolean;
 }
 
 interface Layout {
@@ -496,19 +498,26 @@ export class Renderer {
     ];
 
     for (const b of this.buttons) {
-      const on = b.id === 'sfx' ? audio.sfx : audio.music;
+      const wanted = b.id === 'sfx' ? audio.sfx : audio.music;
+      // Browsers only let audio start from a gesture, so a bus can be switched
+      // on and still be silent. Showing it as fully on would be a lie, and a
+      // player hearing nothing reasonably concludes the control is broken.
+      const audible = wanted && audio.running;
+      const on = wanted;
       ctx.save();
-      ctx.fillStyle = on ? 'rgba(24, 40, 78, 0.85)' : 'rgba(14, 18, 32, 0.8)';
+      ctx.fillStyle = audible ? 'rgba(24, 40, 78, 0.85)' : 'rgba(14, 18, 32, 0.8)';
       roundRect(ctx, b.x, b.y, b.w, b.h, 10);
       ctx.fill();
-      ctx.strokeStyle = on ? 'rgba(60, 224, 255, 0.6)' : 'rgba(120, 140, 180, 0.35)';
+      ctx.strokeStyle = audible
+        ? 'rgba(60, 224, 255, 0.6)'
+        : 'rgba(120, 140, 180, 0.35)';
       ctx.lineWidth = 1.2;
       ctx.stroke();
 
       const cx = b.x + b.w / 2;
       const cy = b.y + b.h / 2;
-      ctx.strokeStyle = on ? PALETTE.cyan : PALETTE.textDim;
-      ctx.fillStyle = on ? PALETTE.cyan : PALETTE.textDim;
+      ctx.strokeStyle = audible ? PALETTE.cyan : PALETTE.textDim;
+      ctx.fillStyle = audible ? PALETTE.cyan : PALETTE.textDim;
       ctx.lineWidth = 1.8;
       ctx.lineCap = 'round';
 

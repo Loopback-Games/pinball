@@ -142,14 +142,48 @@ for (const vp of VIEWPORTS) {
 
   const settings = await page.evaluate(() => globalThis.pinball.audioSettings());
   if (settings.music !== false) problems.push('music toggle did not stick');
+  await page.evaluate(() => globalThis.pinball.setAudio('music', true));
+  await page.waitForTimeout(200);
 
+  // Audio must recover on its own if the context is ever suspended. Trying to
+  // start it once and giving up leaves the game silent while its controls
+  // still claim the sound is on, which is exactly what a player reports as
+  // "it defaults to off until I toggle it".
+  await page.evaluate(() => globalThis.pinball.suspendAudio());
+  await page.waitForTimeout(300);
+  const suspended = await page.evaluate(() => globalThis.pinball.audioContextState());
+  if (suspended !== 'suspended') {
+    console.log(`note: could not suspend the context (state ${suspended}), recovery untested`);
+  } else {
+    const quiet = await page.evaluate(() => globalThis.pinball.musicNotes());
+    await page.mouse.click(640, 500);
+    await page.waitForTimeout(1200);
+    const recovered = await page.evaluate(() => ({
+      ctx: globalThis.pinball.audioContextState(),
+      music: globalThis.pinball.musicNotes(),
+    }));
+    console.log(
+      `after a suspend: ctx=${recovered.ctx}, ${recovered.music - quiet} notes since`,
+    );
+    if (recovered.ctx !== 'running') {
+      problems.push(`audio did not recover from a suspend (state: ${recovered.ctx})`);
+    }
+    if (recovered.music <= quiet) {
+      problems.push('music did not resume after the context was suspended');
+    }
+  }
   // The preference has to survive a reload.
+  await page.evaluate(() => globalThis.pinball.setAudio('music', false));
+  await page.waitForTimeout(100);
   await page.reload({ waitUntil: 'load' });
   await page.waitForTimeout(300);
   const reloaded = await page.evaluate(() => globalThis.pinball.audioSettings());
   console.log(`after reload: ${JSON.stringify(reloaded)}`);
   if (reloaded.music !== false) problems.push('music preference did not persist');
-  await page.evaluate(() => globalThis.pinball.toggleAudio('music'));
+
+  // Leave it as a new player would find it, and check that is what they get.
+  await page.evaluate(() => globalThis.pinball.setAudio('music', true));
+  await page.evaluate(() => globalThis.pinball.setAudio('sfx', true));
 
   await page.close();
 }

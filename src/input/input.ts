@@ -9,8 +9,11 @@ export interface InputOptions {
   isReady: () => boolean;
   /** True while the game is waiting to be started. */
   isIdle: () => boolean;
-  /** Called on the first interaction of any kind, to unlock audio. */
-  onFirstGesture: () => void;
+  /**
+   * Called on every interaction, so audio can keep trying to start. Trying
+   * only once leaves the game silent whenever the first attempt is refused.
+   */
+  onGesture: () => void;
   /** Which on-screen button, if any, sits at these canvas coordinates. */
   hitButton: (x: number, y: number) => string | null;
   /** A button was pressed. */
@@ -54,6 +57,10 @@ export class Input {
     window.addEventListener('pointercancel', this.onPointerUp);
     // Stop the browser turning a double tap into a zoom during play.
     canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+    // Safari only counts click and touchend as the gesture that may start
+    // audio, so listen for those too rather than relying on pointerdown.
+    canvas.addEventListener('click', () => this.options.onGesture());
+    canvas.addEventListener('touchend', () => this.options.onGesture());
     canvas.style.touchAction = 'none';
   }
 
@@ -120,16 +127,18 @@ export class Input {
     });
   }
 
-  private firstGesture(): void {
+  private gesture(): void {
+    this.options.onGesture();
+    // Asking for motion access is genuinely once-only: repeating the prompt
+    // after the player has answered it would be obnoxious.
     if (this.gestureSeen) return;
     this.gestureSeen = true;
-    this.options.onFirstGesture();
     this.requestMotionAccess();
   }
 
   private readonly onKeyDown = (e: KeyboardEvent): void => {
     if (e.repeat) return;
-    this.firstGesture();
+    this.gesture();
     if (PLUNGER_KEYS.has(e.code) || e.code === 'ArrowLeft' || e.code === 'ArrowRight') {
       e.preventDefault(); // stop the page scrolling under the table
     }
@@ -146,7 +155,7 @@ export class Input {
   };
 
   private readonly onPointerDown = (e: PointerEvent): void => {
-    this.firstGesture();
+    this.gesture();
     this.canvas.setPointerCapture?.(e.pointerId);
     // Buttons win over every play zone, so a thumb reaching for the mute
     // control never nudges the table instead.

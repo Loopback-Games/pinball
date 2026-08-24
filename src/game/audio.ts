@@ -67,6 +67,7 @@ export class Audio {
   private failed = false;
 
   private mood: MusicMood = 'attract';
+  private resumeTicks = 0;
   private step = 0;
   private nextStepTime = 0;
 
@@ -75,13 +76,23 @@ export class Audio {
 
   /** Notes the sequencer has queued. Diagnostic, so tests can see it running. */
   scheduledNotes = 0;
+  /** Effect voices started. Diagnostic, so tests can tell silence from muting. */
+  playedEffects = 0;
 
   constructor() {
     this.sfxEnabled = readFlag(SFX_KEY, true);
     this.musicEnabled = readFlag(MUSIC_KEY, true);
   }
 
-  /** Call from a user gesture handler. Safe to call repeatedly. */
+  /**
+   * Start or restart audio. Call from every user gesture, not just the first.
+   *
+   * Whether a browser accepts the first attempt depends on the browser and on
+   * which event carried the gesture: Safari honours click and touchend but not
+   * pointerdown. Trying once and giving up leaves the game permanently silent
+   * while its controls claim the sound is on. It is cheap and idempotent, so
+   * the fix is simply to keep trying.
+   */
   resume(): void {
     if (this.failed) return;
     try {
@@ -105,10 +116,15 @@ export class Audio {
         this.noiseBuffer = makeNoise(ctx);
         this.nextStepTime = ctx.currentTime + 0.1;
       }
-      void this.ctx.resume();
+      if (this.ctx.state !== 'running') void this.ctx.resume();
     } catch {
       this.failed = true;
     }
+  }
+
+  /** Testing hook: put the context to sleep the way a browser might. */
+  suspendForTest(): void {
+    void this.ctx?.suspend();
   }
 
   /** Diagnostic hook: what the browser thinks the audio context is doing. */
@@ -147,7 +163,16 @@ export class Audio {
   tick(): void {
     const ctx = this.ctx;
     const bus = this.musicBus;
-    if (this.failed || !ctx || !bus || ctx.state !== 'running') return;
+    if (this.failed || !ctx || !bus) return;
+    if (ctx.state !== 'running') {
+      // A browser may suspend the context at any point, not only before the
+      // first gesture. Nudge it back periodically rather than waiting for the
+      // player to notice the silence and go looking for a control.
+      this.resumeTicks += 1;
+      if (this.resumeTicks % 30 === 0) this.resume();
+      return;
+    }
+    this.resumeTicks = 0;
     if (!this.musicEnabled) {
       // Keep the clock rolling so unmuting does not replay a backlog.
       this.nextStepTime = Math.max(this.nextStepTime, ctx.currentTime);
@@ -366,6 +391,7 @@ export class Audio {
     const ctx = this.ctx;
     const bus = this.sfxBus;
     if (!ctx || !bus) return;
+    this.playedEffects += 1;
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;

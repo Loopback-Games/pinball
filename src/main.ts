@@ -14,16 +14,21 @@ const renderer = new Renderer(canvas);
 const audio = new Audio();
 game.onSound = (name, intensity) => audio.play(name, intensity);
 
-function toggle(id: string): void {
+function setAudio(id: string, on: boolean): void {
   audio.resume();
-  if (id === 'sfx') audio.setSfxEnabled(!audio.sfxEnabled);
-  if (id === 'music') audio.setMusicEnabled(!audio.musicEnabled);
+  if (id === 'sfx') audio.setSfxEnabled(on);
+  if (id === 'music') audio.setMusicEnabled(on);
+}
+
+function toggle(id: string): void {
+  if (id === 'sfx') setAudio('sfx', !audio.sfxEnabled);
+  if (id === 'music') setAudio('music', !audio.musicEnabled);
 }
 
 const input = new Input(canvas, {
   isReady: () => game.phase === 'ready',
   isIdle: () => game.phase === 'attract' || game.phase === 'gameOver',
-  onFirstGesture: () => audio.resume(),
+  onGesture: () => audio.resume(),
   hitButton: (x, y) => renderer.hitButton(x, y),
   onButton: toggle,
 });
@@ -54,6 +59,7 @@ function frame(now: number): void {
   renderer.draw(game, elapsed, {
     sfx: audio.sfxEnabled,
     music: audio.musicEnabled,
+    running: audio.state() === 'running',
   });
   requestAnimationFrame(frame);
 }
@@ -66,6 +72,9 @@ Object.assign(globalThis, {
     audioContextState: () => audio.state(),
     audioSettings: () => ({ sfx: audio.sfxEnabled, music: audio.musicEnabled }),
     musicNotes: () => audio.scheduledNotes,
+    sfxVoices: () => audio.playedEffects,
+    suspendAudio: () => audio.suspendForTest(),
+    setAudio,
     toggleAudio: toggle,
   }),
 });
