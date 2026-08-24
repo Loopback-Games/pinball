@@ -2,6 +2,13 @@ import { describe, expect, it } from 'vitest';
 import { Game, noIntents } from '../src/game/game.js';
 import type { Intents, SoundName } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
+import { overlap } from '../src/engine/shapes.js';
+import { BALL_RADIUS, DRAIN_Y, buildTable } from '../src/game/table.js';
+
+const table = buildTable();
+/** True if a ball placed here would start inside solid geometry. */
+const insideSolid = (x: number, y: number): boolean =>
+  table.colliders.some((c) => overlap(c, vec(x, y), BALL_RADIUS) !== null);
 
 /**
  * Fan shots out from a flipper across every angle and speed, and record what
@@ -33,18 +40,34 @@ function sweepFrom(origin: { x: number; y: number }): Map<SoundName, number> {
   return reached;
 }
 
-/** A bot that flips whenever a ball falls into range. Not skilled, just busy. */
-function botIntents(game: Game): Intents {
-  const intents = noIntents();
-  if (game.phase === 'ready') intents.plunger = true;
-  for (const entry of game.balls) {
-    if (entry.mode !== 'play') continue;
-    const { x, y } = entry.ball.pos;
-    if (entry.ball.vel.y < -50 || y < 760 || y > 900) continue;
-    if (x < 278) intents.leftFlipper = true;
-    else intents.rightFlipper = true;
-  }
-  return intents;
+/**
+ * A bot that flips whenever a ball falls into range. Not skilled, just busy.
+ *
+ * It has to let go of the plunger. Holding it forever leaves the game parked
+ * in `ready` with the ball still on the shooter tip, which every test driving
+ * this bot will happily pass without a ball ever reaching the playfield.
+ */
+function makeBot(): (game: Game) => Intents {
+  let held = 0;
+  return (game: Game): Intents => {
+    const intents = noIntents();
+    if (game.phase === 'ready') {
+      held += 1;
+      // Draw for two thirds of a second, release, and start over if the ball
+      // is somehow still sitting there.
+      intents.plunger = held % 54 < 40;
+    } else {
+      held = 0;
+    }
+    for (const entry of game.balls) {
+      if (entry.mode !== 'play') continue;
+      const { x, y } = entry.ball.pos;
+      if (entry.ball.vel.y < -50 || y < 760 || y > 900) continue;
+      if (x < 278) intents.leftFlipper = true;
+      else intents.rightFlipper = true;
+    }
+    return intents;
+  };
 }
 
 describe('shot reachability', () => {
@@ -93,17 +116,24 @@ describe('shot reachability', () => {
 describe('endurance', () => {
   it('never leaves a ball wedged for the rest of the game', () => {
     const game = new Game();
+    const bot = makeBot();
     game.startGame();
     let longestStall = 0;
+    let framesInPlay = 0;
     for (let i = 0; i < 60 * 180; i += 1) {
       if (game.phase === 'gameOver') break;
-      game.update(1 / 60, botIntents(game));
+      game.update(1 / 60, bot(game));
       for (const entry of game.balls) {
         if (entry.mode === 'play') {
+          framesInPlay += 1;
           longestStall = Math.max(longestStall, entry.ball.idleTime);
         }
       }
     }
+    // Prove the bot actually played before trusting what it measured. This
+    // test spent its whole life green while the bot held the plunger down for
+    // all three minutes and no ball ever left the shooter lane.
+    expect(framesInPlay).toBeGreaterThan(60 * 20);
     // The stuck-ball recovery shoves any ball idle for six seconds, so nothing
     // should ever exceed that by much.
     expect(longestStall).toBeLessThan(7);
@@ -130,4 +160,61 @@ describe('a game always ends', () => {
     // never came back down to the flippers and the game ran forever.
     expect(game.phase, `still playing after ${seconds.toFixed(0)}s`).toBe('gameOver');
   });
+});
+
+describe('ball traps', () => {
+  it('has nowhere on the playfield that keeps hold of the ball', () => {
+    // Seed a ball across the playfield in four directions and let it settle
+    // with the flippers down. Anything still circling the same seventy units
+    // after eight seconds is wedged in the geometry: the stuck-ball recovery
+    // would eventually throw it clear, but the player has spent those seconds
+    // watching a dead table.
+    //
+    // Written against three real traps, all of them a gap a shade under one
+    // ball wide: a standup mirrored into the foot of the ramp funnel, the slot
+    // between that funnel and the standup bank, and a post sitting mid-channel
+    // with twenty-six units either side of it.
+    const trapped: string[] = [];
+    let launches = 0;
+    for (let x = 60; x <= 500; x += 25) {
+      for (let y = 300; y <= 760; y += 25) {
+        if (insideSolid(x, y)) continue;
+        for (const degrees of [0, 90, 180, 270]) {
+          launches += 1;
+          const game = new Game();
+          game.startGame();
+          game.phase = 'playing';
+          const entry = game.balls[0];
+          if (!entry) throw new Error('the game has no ball to place');
+          entry.mode = 'play';
+          entry.ball.active = true;
+          entry.ball.pos = vec(x, y);
+          const radians = (degrees * Math.PI) / 180;
+          entry.ball.vel = vec(Math.cos(radians) * 700, Math.sin(radians) * 700);
+          entry.ball.idleTime = 0;
+          entry.confinedTime = 0;
+          entry.anchor = entry.ball.pos;
+
+          let worst = 0;
+          for (let i = 0; i < 60 * 8; i += 1) {
+            game.update(1 / 60, noIntents());
+            if (entry.mode !== 'play' || entry.ball.pos.y > DRAIN_Y) break;
+            worst = Math.max(worst, entry.confinedTime);
+          }
+          if (worst > 5 && entry.mode === 'play') {
+            const p = entry.ball.pos;
+            trapped.push(`(${x},${y}) @${degrees}deg -> (${p.x.toFixed(0)},${p.y.toFixed(0)})`);
+          }
+        }
+      }
+    }
+    // Never zero: a ball can balance on the crown of the saucer or sit on a
+    // flipper nobody is flipping, and neither is a fault in the table. The
+    // budget is there to catch a notch coming back, and the three that were
+    // taken out put this at fifty-plus on the same sweep.
+    expect(
+      trapped.length,
+      `${trapped.length}/${launches} trapped:\n${trapped.slice(0, 12).join('\n')}`,
+    ).toBeLessThan(launches * 0.015);
+  }, 60_000);
 });

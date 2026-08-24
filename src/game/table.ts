@@ -3,7 +3,7 @@ import type { Collider } from '../engine/shapes.js';
 import { arc, circle, segment, segmentFlipped } from '../engine/shapes.js';
 import type { SurfaceOptions } from '../engine/shapes.js';
 import type { Vec2 } from '../engine/vec2.js';
-import { lerp, vec } from '../engine/vec2.js';
+import { distance, lerp, vec } from '../engine/vec2.js';
 import { SLINGSHOT_KICK } from './rules.js';
 import type { Sensor } from './sensors.js';
 import { sensorCircle, sensorRect } from './sensors.js';
@@ -126,6 +126,26 @@ function polyline(
     );
   }
   return out;
+}
+
+/**
+ * The largest circle that fits inside triangle `a`-`b`-`c`, as a collider.
+ *
+ * Used to fill the inside of a body built from thin edges, so that a ball that
+ * somehow ends up within it is pushed back out rather than kept.
+ */
+function incircle(id: string, a: Vec2, b: Vec2, c: Vec2): Collider {
+  const la = distance(b, c);
+  const lb = distance(a, c);
+  const lc = distance(a, b);
+  const perimeter = la + lb + lc;
+  const center = vec(
+    (la * a.x + lb * b.x + lc * c.x) / perimeter,
+    (la * a.y + lb * b.y + lc * c.y) / perimeter,
+  );
+  const area = Math.abs((b.x - a.x) * (c.y - a.y) - (c.x - a.x) * (b.y - a.y)) / 2;
+  const radius = area / (perimeter / 2);
+  return circle(id, center, radius, { restitution: 0.2, friction: 0.4 });
 }
 
 export interface BumperSpec {
@@ -344,6 +364,12 @@ export function buildTable(): Table {
   // flipper, and they leave a gap wide enough for the saucer shot.
   // Sloped outward, so a ball that lands on one rolls off towards the
   // slingshot instead of sitting on it like a shelf.
+  //
+  // These two set the width of the only corridor from the flippers up to the
+  // saucer and the bumper nest, so they stay on the mirror line. Moving the
+  // right one inboard to clear the ramp funnel closed that corridor by forty
+  // units and halved how often the ball ever reached the pop bumpers; the
+  // funnel was moved instead.
   for (const [i, x] of [200, MIRROR - 200].entries()) {
     const id = `target-${3 + i}`;
     const outward = i === 0 ? -1 : 1;
@@ -384,9 +410,22 @@ export function buildTable(): Table {
   // Entry funnel on the right, feeding a wire ramp that returns the ball to the
   // left inlane. The ramp itself is a path the rule layer walks the ball along.
   const rampEntry = vec(404, 566);
+  // Both walls are kept clear of their neighbours, because a gap a shade under
+  // one ball wide is not a gap, it is a trap.
+  //
+  // The left wall starts above the centre standup rather than beside it: level
+  // with the target, the notch between the two held the ball and rattled it
+  // against the target face for the nine seconds the stuck-ball recovery used
+  // to take to notice, and that one spot produced more wedged balls than the
+  // rest of the table together.
+  //
+  // The right wall stops level with the ramp sensor for the same reason at the
+  // other end, where it otherwise finished alongside the foot of the standup
+  // bank. Nothing is lost by stopping there: a ball that far up the funnel has
+  // already tripped the sensor.
   colliders.push(
-    ...polyline('guide', [vec(356, 632), vec(380, 534)], 'right', RAIL),
-    ...polyline('guide', [vec(452, 632), vec(428, 534)], 'left', RAIL),
+    ...polyline('guide', [vec(368, 610), vec(380, 534)], 'right', RAIL),
+    ...polyline('guide', [vec(452, 632), vec(436, 566)], 'left', RAIL),
   );
   sensors.push(sensorCircle('ramp-entry', rampEntry, 24));
   // The habitrail is raised above the playfield, so it is allowed to cross
@@ -416,7 +455,11 @@ export function buildTable(): Table {
   // blocks the ramp mouth, so both corridors are deliberately left clear.
   const posts: BumperSpec[] = [
     { id: 'post', center: vec(148, 606), radius: 9 },
-    { id: 'post', center: vec(470, 556), radius: 9 },
+    // Kept close to the shooter-lane divider. Nearer the middle of the right
+    // channel it leaves a gap of about 26 units on either side of it, and a
+    // 27 unit ball wedges in a gap it cannot pass through: that one post was
+    // the last real trap on the table.
+    { id: 'post', center: vec(492, 560), radius: 9 },
     // The pair that used to guard the mouth of the bumper nest is gone. They
     // narrowed the only corridor into it, and the bumpers are the feature that
     // most wants traffic.
@@ -471,6 +514,15 @@ export function buildTable(): Table {
       ...s.face,
       ...polyline('wall', [s.c, s.b], inner, { ...WALL, radius: 5 }),
       ...polyline('wall', [s.b, s.a], inner, { ...WALL, radius: 5 }),
+      // Plug the hollow inside the triangle.
+      //
+      // Three thin edges leave an interior the ball has no way out of, and the
+      // kicking face makes it worse: from the inside its normal points further
+      // in, so the thing meant to eject the ball drives it deeper. A ball has
+      // no business in here, but "cannot happen" is not the same as cannot,
+      // and a solid core costs nothing. It is never drawn and never scores,
+      // because nothing outside the body can touch it.
+      incircle('shim', s.a, s.b, s.c),
     );
   }
 
