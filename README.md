@@ -34,6 +34,12 @@ five standup targets, a spinner in the left orbit lane, three rollover lanes
 across the top of the orbit, a mission saucer, a kickback guarding the right
 outlane, and a plastic ramp that returns the ball to the left inlane.
 
+The ramp forks. A diverter at its apex is normally closed, sending the ball the
+long way round to the inlane; thrown, it drops the ball out of a short tube
+straight into the saucer. The blade is visible on the wireform and swings when
+the gate is armed, so which way the next ramp shot goes can be read off the
+table rather than off the display.
+
 The two sides are deliberately different. The left orbit is the safe shot: a
 one-way gate at the foot of its lane feeds returning balls back to the flippers.
 The right side keeps a live outlane, which is what the kickback is there for.
@@ -51,10 +57,17 @@ Nothing on the table is worth a fixed amount for long.
   the chain multiplies every shot until the chain lapses.
 - **Frenzy** — clearing the standup targets doubles everything for eighteen
   seconds.
+- **Warp gate** — six spinner passes arm the diverter on the ramp. The next
+  ramp shot then pays 12,000 and forks into the saucer, taking a mission step
+  or collecting multiball with it. It still counts as a ramp shot on the way
+  past. Arming survives a drain but not a new game: a single ball reaches the
+  spinner three times and no more, so per-ball progress could never get there.
 - **Kickback** — lit at the start of each ball and relit by clearing the drop
   bank, it throws a ball back out of the right outlane once.
 - **Pop bumpers** get more valuable the more you work them, and the **spinner**
-  climbs while you keep it moving and cools off when you don't.
+  climbs while you keep it moving and cools off when you don't. The spinner is
+  also the only way to arm the warp, which makes the left orbit and the right
+  ramp a two-shot rhythm across the table.
 - **Multiball jackpots** — every bumper hit during multiball grows the jackpot,
   which the ramp or the saucer collects.
 

@@ -15,9 +15,18 @@ import {
   TABLE_H,
   TABLE_W,
 } from '../game/table.js';
-import { MISSIONS } from '../game/rules.js';
+import { MISSIONS, SCORE, SPINNER_VALUE_MAX, SPINS_TO_ARM_WARP } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
+import { clamp } from '../engine/vec2.js';
 import { PALETTE, seeded } from './palette.js';
+
+/**
+ * Centre of the spinner, matching the sensor the rule layer watches.
+ *
+ * The sensor is a box in the left orbit lane; this is its middle. Drawn
+ * anywhere else the blade turns somewhere the ball is not.
+ */
+const SPINNER_AT = { x: 51, y: 568 };
 
 /** Width the audio buttons occupy in the top-right corner, in CSS pixels. */
 const AUDIO_BUTTON_SPAN = 96;
@@ -69,6 +78,9 @@ export class Renderer {
   private height = 0;
   private dpr = 1;
   private buttons: Button[] = [];
+  /** Blade position at the habitrail fork, 0 on the ramp, 1 on the warp. */
+  private diverter = 0;
+  private diverterTime = 0;
 
   constructor(private readonly canvas: HTMLCanvasElement) {
     const ctx = canvas.getContext('2d', { alpha: false });
@@ -248,22 +260,24 @@ export class Renderer {
       g.restore();
     }
 
-    // Spinner, sitting across the left lane.
+    // The spinner's frame and the well it sits in. The blade itself is drawn
+    // every frame instead, because it turns: painted into the cached layer,
+    // the one part of the table whose whole point is that it moves was the
+    // only part that never did.
     g.save();
-    g.translate(51, 571);
-    g.fillStyle = 'rgba(60, 224, 255, 0.16)';
-    g.fillRect(-22, -15, 44, 30);
-    g.strokeStyle = PALETTE.cyan;
+    g.translate(SPINNER_AT.x, SPINNER_AT.y);
+    const well = g.createLinearGradient(0, -16, 0, 16);
+    well.addColorStop(0, 'rgba(4, 8, 18, 0.9)');
+    well.addColorStop(1, 'rgba(12, 22, 44, 0.75)');
+    g.fillStyle = well;
+    g.fillRect(-22, -16, 44, 32);
+    g.strokeStyle = 'rgba(60, 224, 255, 0.55)';
     g.lineWidth = 2;
-    g.strokeRect(-22, -15, 44, 30);
-    g.strokeStyle = 'rgba(219, 228, 244, 0.75)';
-    g.lineWidth = 3;
-    for (let i = -1; i <= 1; i += 1) {
-      g.beginPath();
-      g.moveTo(i * 12, -13);
-      g.lineTo(i * 12, 13);
-      g.stroke();
-    }
+    g.strokeRect(-22, -16, 44, 32);
+    // Posts the blade hangs between.
+    g.fillStyle = PALETTE.railMid;
+    g.fillRect(-23, -17, 3, 34);
+    g.fillRect(20, -17, 3, 34);
     g.restore();
 
     // Shooter lane floor markings.
@@ -445,6 +459,7 @@ export class Renderer {
     }
 
     this.drawInserts(ctx, game, time);
+    this.drawSpinner(ctx, game, time);
     this.drawTargets(ctx, game);
     this.drawBumpers(ctx, game, time);
     this.drawSlingshotFlash(ctx, game);
@@ -453,7 +468,7 @@ export class Renderer {
     // Balls on the playfield pass under the raised habitrail; the one riding
     // it goes over the top.
     this.drawBalls(ctx, game, false);
-    this.drawRamp(ctx, game);
+    this.drawRamp(ctx, game, time);
     this.drawBalls(ctx, game, true);
     this.drawEffects(ctx, game);
     ctx.restore();
@@ -838,53 +853,181 @@ export class Renderer {
    * posts so that crossing over the bumpers reads as elevation rather than as
    * a mistake.
    */
-  private drawRamp(ctx: CanvasRenderingContext2D, game: Game): void {
-    const path = game.table.rampPath;
-    if (path.length < 2) return;
+  /**
+   * The habitrail and the fork that drops out of it into the saucer.
+   *
+   * The two branches share a trunk, so the trunk is drawn once from the ramp's
+   * own path and each branch is drawn from the fork onwards. Drawing both
+   * paths whole instead stacks two translucent surfaces on the shared stretch,
+   * which shows up as a bright seam running the length of the climb.
+   */
+  private drawRamp(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
+    const { rampPath, warpPath, warpFork, warpForkIndex } = game.table;
+    if (rampPath.length < 2) return;
 
-    /** Offset copy of the path, `d` units to its left, shifted down by `dy`. */
-    const side = (d: number, dy: number): Vec2[] =>
-      path.map((p, i) => {
-        const prev = path[Math.max(0, i - 1)] ?? p;
-        const next = path[Math.min(path.length - 1, i + 1)] ?? p;
-        const tx = next.x - prev.x;
-        const ty = next.y - prev.y;
-        const len = Math.hypot(tx, ty) || 1;
-        return { x: p.x + (-ty / len) * d, y: p.y + (tx / len) * d + dy };
-      });
-
-    const ribbon = (d: number, dy: number): void => {
-      const a = side(d, dy);
-      const b = side(-d, dy);
-      ctx.beginPath();
-      a.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-      for (let i = b.length - 1; i >= 0; i -= 1) {
-        const p = b[i];
-        if (p) ctx.lineTo(p.x, p.y);
-      }
-      ctx.closePath();
-    };
+    // Ease the blade towards where the rules have it, rather than snapping. A
+    // diverter that teleports between branches reads as a drawing error; one
+    // that swings reads as a mechanism.
+    const dt = clamp(time - this.diverterTime, 0, 0.1);
+    this.diverterTime = time;
+    const target = game.warpLit ? 1 : 0;
+    this.diverter += (target - this.diverter) * (1 - Math.pow(0.0002, dt));
 
     ctx.save();
     ctx.lineCap = 'round';
     ctx.lineJoin = 'round';
 
-    // Shadow cast on the playfield, well offset so the height is unmistakable.
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    ribbon(11, 20);
-    ctx.fill();
+    // Shadows for both branches first, so neither lands on top of the other's
+    // surface and darkens it.
+    this.railShadow(ctx, rampPath);
+    this.railShadow(ctx, warpPath.slice(Math.max(0, warpForkIndex - 1)));
 
-    // The ramp surface: translucent plastic, brighter along its length.
+    // The long way round: open plastic, the ramp that has always been there.
+    this.railSurface(ctx, rampPath, {
+      from: 'rgba(150, 205, 255, 0.30)',
+      to: 'rgba(110, 160, 235, 0.16)',
+      width: 11,
+    });
+
+    // The fork: an enclosed tube rather than an open ramp, so at a glance the
+    // player can tell which of the two the ball is about to take.
+    //
+    // It stops short of the saucer rather than running into it. Drawn all the
+    // way to the path's end the tube lies across the cup, and the saucer is
+    // the shot the entire campaign is gated on: a wireform that hides it is
+    // the same mistake the ramp is routed around the bumpers to avoid. Ending
+    // it above the rim also gives the ball a visible drop out of the tube,
+    // which is what the shot actually does.
+    const saucer = game.table.saucer;
+    const fork = warpPath
+      .slice(Math.max(0, warpForkIndex - 1))
+      .filter(
+        (p) => Math.hypot(p.x - saucer.center.x, p.y - saucer.center.y) > saucer.radius + 10,
+      );
+    ctx.save();
+    // A closed diverter leaves this branch dead, so it sits back as structure
+    // until the gate is thrown.
+    ctx.globalAlpha = 0.4 + 0.6 * this.diverter;
+    this.railSurface(ctx, fork, {
+      from: 'rgba(190, 150, 255, 0.34)',
+      to: 'rgba(140, 105, 235, 0.20)',
+      width: 12,
+    });
+    this.railRibs(ctx, fork, 12);
+    // Open end, so the tube reads as something the ball falls out of.
+    const spout = fork[fork.length - 1];
+    const before = fork[fork.length - 2];
+    if (spout && before) {
+      const angle = Math.atan2(spout.y - before.y, spout.x - before.x);
+      ctx.save();
+      ctx.translate(spout.x, spout.y);
+      ctx.rotate(angle);
+      ctx.fillStyle = 'rgba(10, 14, 28, 0.8)';
+      ctx.beginPath();
+      ctx.ellipse(0, 0, 4, 12, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.strokeStyle = PALETTE.violet;
+      ctx.lineWidth = 1.6;
+      ctx.stroke();
+      ctx.restore();
+    }
+    ctx.restore();
+
+    // A chase of light down whichever branch is live, so the armed state is
+    // visible from the flippers without reading the display.
+    if (this.diverter > 0.05) {
+      this.railChase(ctx, fork, time, PALETTE.violet, this.diverter);
+    }
+
+    this.drawDiverter(ctx, warpFork, rampPath, warpPath, warpForkIndex);
+
+    // Entry mouth and exit flare, so both ends read as openings.
+    const entry = rampPath[0];
+    if (entry) {
+      // Violet either way, matching the arrow printed on the playfield under
+      // it. Arming is carried by the pulse and the legend, not by a change of
+      // colour that would leave the mouth and the arrow disagreeing.
+      const armed = this.diverter > 0.5;
+      const pulse = armed ? 0.5 + Math.sin(time * 7) * 0.3 : 0.45;
+      this.glow(ctx, entry.x, entry.y, armed ? 44 : 36, PALETTE.violet, pulse);
+      ctx.strokeStyle = PALETTE.violet;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(entry.x, entry.y, 16, 0, Math.PI * 2);
+      ctx.stroke();
+      if (armed) {
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, pulse + 0.35);
+        ctx.fillStyle = PALETTE.violet;
+        ctx.font = '700 11px ui-monospace, Menlo, monospace';
+        ctx.textAlign = 'center';
+        ctx.fillText('WARP', entry.x, entry.y + 40);
+        ctx.restore();
+      }
+    }
+    const exit = rampPath[rampPath.length - 1];
+    if (exit) {
+      ctx.fillStyle = 'rgba(198, 224, 255, 0.5)';
+      ctx.beginPath();
+      ctx.ellipse(exit.x, exit.y, 13, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  /** Offset copy of `path`, `d` units to its left, shifted down by `dy`. */
+  private static offsetPath(path: readonly Vec2[], d: number, dy: number): Vec2[] {
+    return path.map((p, i) => {
+      const prev = path[Math.max(0, i - 1)] ?? p;
+      const next = path[Math.min(path.length - 1, i + 1)] ?? p;
+      const tx = next.x - prev.x;
+      const ty = next.y - prev.y;
+      const len = Math.hypot(tx, ty) || 1;
+      return { x: p.x + (-ty / len) * d, y: p.y + (tx / len) * d + dy };
+    });
+  }
+
+  /** Trace the closed outline of a rail `d` units wide, shifted down by `dy`. */
+  private railRibbon(
+    ctx: CanvasRenderingContext2D,
+    path: readonly Vec2[],
+    d: number,
+    dy: number,
+  ): void {
+    const a = Renderer.offsetPath(path, d, dy);
+    const b = Renderer.offsetPath(path, -d, dy);
+    ctx.beginPath();
+    a.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
+    for (let i = b.length - 1; i >= 0; i -= 1) {
+      const p = b[i];
+      if (p) ctx.lineTo(p.x, p.y);
+    }
+    ctx.closePath();
+  }
+
+  private railShadow(ctx: CanvasRenderingContext2D, path: readonly Vec2[]): void {
+    if (path.length < 2) return;
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
+    this.railRibbon(ctx, path, 11, 20);
+    ctx.fill();
+  }
+
+  private railSurface(
+    ctx: CanvasRenderingContext2D,
+    path: readonly Vec2[],
+    o: { from: string; to: string; width: number },
+  ): void {
+    if (path.length < 2) return;
     const surface = ctx.createLinearGradient(0, 160, 0, 700);
-    surface.addColorStop(0, 'rgba(150, 205, 255, 0.30)');
-    surface.addColorStop(1, 'rgba(110, 160, 235, 0.16)');
+    surface.addColorStop(0, o.from);
+    surface.addColorStop(1, o.to);
     ctx.fillStyle = surface;
-    ribbon(11, 0);
+    this.railRibbon(ctx, path, o.width, 0);
     ctx.fill();
 
     // Raised edges either side.
-    for (const d of [-11, 11]) {
-      const edge = side(d, 0);
+    for (const d of [-o.width, o.width]) {
+      const edge = Renderer.offsetPath(path, d, 0);
       ctx.beginPath();
       edge.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
       ctx.strokeStyle = 'rgba(20, 30, 52, 0.85)';
@@ -901,23 +1044,179 @@ export class Renderer {
     ctx.strokeStyle = 'rgba(255, 255, 255, 0.16)';
     ctx.lineWidth = 5;
     ctx.stroke();
+  }
 
-    // Entry mouth and exit flare, so both ends read as openings.
-    const entry = path[0];
-    if (entry) {
-      this.glow(ctx, entry.x, entry.y, 36, PALETTE.violet, 0.45);
-      ctx.strokeStyle = PALETTE.violet;
-      ctx.lineWidth = 3;
+  /** Hoops across a rail, which is what makes it read as a tube not a trough. */
+  private railRibs(ctx: CanvasRenderingContext2D, path: readonly Vec2[], width: number): void {
+    const left = Renderer.offsetPath(path, width, 0);
+    const right = Renderer.offsetPath(path, -width, 0);
+    ctx.save();
+    ctx.strokeStyle = 'rgba(210, 190, 255, 0.30)';
+    ctx.lineWidth = 1.4;
+    for (let i = 2; i < path.length - 1; i += 3) {
+      const a = left[i];
+      const b = right[i];
+      if (!a || !b) continue;
       ctx.beginPath();
-      ctx.arc(entry.x, entry.y, 16, 0, Math.PI * 2);
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
       ctx.stroke();
     }
-    const exit = path[path.length - 1];
-    if (exit) {
-      ctx.fillStyle = 'rgba(198, 224, 255, 0.5)';
+    ctx.restore();
+  }
+
+  /** A short bright run travelling along a rail, repeating. */
+  private railChase(
+    ctx: CanvasRenderingContext2D,
+    path: readonly Vec2[],
+    time: number,
+    color: string,
+    strength: number,
+  ): void {
+    if (path.length < 4) return;
+    const head = (time * 0.75) % 1;
+    const span = 0.28;
+    ctx.save();
+    ctx.globalAlpha = strength;
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.lineCap = 'round';
+    for (let i = 1; i < path.length; i += 1) {
+      const t = i / (path.length - 1);
+      // Distance behind the head, wrapped, so the run loops without a seam.
+      const behind = (head - t + 1) % 1;
+      if (behind > span) continue;
+      const a = path[i - 1];
+      const b = path[i];
+      if (!a || !b) continue;
+      ctx.globalAlpha = strength * (1 - behind / span);
       ctx.beginPath();
-      ctx.ellipse(exit.x, exit.y, 13, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  /**
+   * The blade at the fork, swung between the two branches.
+   *
+   * It is aimed by taking the direction of each branch a little past the
+   * junction and interpolating between them, so it always lies along whichever
+   * wire the ball is about to be given and needs no angles of its own.
+   */
+  private drawDiverter(
+    ctx: CanvasRenderingContext2D,
+    fork: Vec2,
+    rampPath: readonly Vec2[],
+    warpPath: readonly Vec2[],
+    forkIndex: number,
+  ): void {
+    const aim = (path: readonly Vec2[]): number => {
+      const ahead = path[Math.min(path.length - 1, forkIndex + 5)] ?? fork;
+      return Math.atan2(ahead.y - fork.y, ahead.x - fork.x);
+    };
+    const a = aim(rampPath);
+    let b = aim(warpPath);
+    // Take the short way round, so the blade never swings the long way about.
+    while (b - a > Math.PI) b -= Math.PI * 2;
+    while (a - b > Math.PI) b += Math.PI * 2;
+    const angle = a + (b - a) * this.diverter;
+
+    ctx.save();
+    ctx.translate(fork.x, fork.y);
+    // Pivot post.
+    ctx.fillStyle = PALETTE.railDark;
+    ctx.beginPath();
+    ctx.arc(0, 0, 6, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.rotate(angle);
+    const lit = this.diverter > 0.5;
+    ctx.fillStyle = lit ? PALETTE.violet : PALETTE.railLight;
+    ctx.strokeStyle = 'rgba(10, 14, 28, 0.9)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-2, -4);
+    ctx.lineTo(22, -2.5);
+    ctx.lineTo(22, 2.5);
+    ctx.lineTo(-2, 4);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+    ctx.restore();
+    if (lit) this.glow(ctx, fork.x, fork.y, 26, PALETTE.violet, 0.35 * this.diverter);
+  }
+
+  /**
+   * The spinner blade, turning under its own momentum.
+   *
+   * Drawn edge-on as a rectangle whose width follows the cosine of its angle,
+   * which is all a flat vane seen from above ever is, and it costs nothing
+   * next to projecting a real one.
+   */
+  private drawSpinner(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
+    const { x, y } = SPINNER_AT;
+    const armed = game.warpLit;
+    const progress = game.spinsToWarp / SPINS_TO_ARM_WARP;
+
+    ctx.save();
+    ctx.translate(x, y);
+
+    // Hot when the value has climbed, cool when it has decayed back.
+    const heat = clamp(
+      (game.spinnerValue - SCORE.spinner) / (SPINNER_VALUE_MAX - SCORE.spinner),
+      0,
+      1,
+    );
+    const color = armed ? PALETTE.violet : heat > 0.35 ? PALETTE.amber : PALETTE.cyan;
+
+    const face = Math.cos(game.spinnerAngle);
+    const half = Math.abs(face) * 15 + 1.5;
+    // Edge-on the vane is a bright line; face-on it is a lit plate.
+    const grad = ctx.createLinearGradient(-half, 0, half, 0);
+    grad.addColorStop(0, 'rgba(20, 30, 52, 0.95)');
+    grad.addColorStop(
+      0.5,
+      face >= 0 ? 'rgba(226, 238, 255, 0.95)' : 'rgba(150, 170, 205, 0.9)',
+    );
+    grad.addColorStop(1, 'rgba(20, 30, 52, 0.95)');
+    ctx.fillStyle = grad;
+    ctx.fillRect(-half, -13, half * 2, 26);
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 1.4;
+    ctx.strokeRect(-half, -13, half * 2, 26);
+
+    // Spindle.
+    ctx.strokeStyle = 'rgba(226, 238, 255, 0.8)';
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, -15);
+    ctx.lineTo(0, 15);
+    ctx.stroke();
+
+    if (Math.abs(game.spinnerRate) > 1) {
+      this.glow(ctx, 0, 0, 30, color, clamp(Math.abs(game.spinnerRate) / 34, 0.15, 0.6));
+    }
+    ctx.restore();
+
+    // Arming pips beneath the spinner, one per banked pass. They sit in the
+    // lane the ball has just come up, which is where the player is looking.
+    ctx.save();
+    for (let i = 0; i < SPINS_TO_ARM_WARP; i += 1) {
+      const px = x - 18 + (i * 36) / (SPINS_TO_ARM_WARP - 1);
+      const filled = armed || i < Math.round(progress * SPINS_TO_ARM_WARP);
+      ctx.beginPath();
+      ctx.arc(px, y + 24, 2.6, 0, Math.PI * 2);
+      if (filled) {
+        ctx.fillStyle = armed ? PALETTE.violet : PALETTE.cyan;
+        ctx.globalAlpha = armed ? 0.6 + Math.sin(time * 6 - i * 0.5) * 0.4 : 0.9;
+        ctx.fill();
+      } else {
+        ctx.globalAlpha = 0.45;
+        ctx.strokeStyle = 'rgba(125, 141, 176, 0.9)';
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
     }
     ctx.restore();
   }
@@ -928,7 +1227,10 @@ export class Renderer {
       if ((entry.mode === 'rail') !== onRail) continue;
       let p = entry.ball.pos;
       if (entry.mode === 'rail') {
-        p = pointAlong(game.table.rampPath, entry.railT);
+        p = pointAlong(
+          entry.railPath === 'warp' ? game.table.warpPath : game.table.rampPath,
+          entry.railT,
+        );
       }
       const speed = Math.hypot(entry.ball.vel.x, entry.ball.vel.y);
 

@@ -15,6 +15,7 @@ export const SCORE = {
   rolloverSetComplete: 5000,
   rampBase: 2400,
   rampIncrement: 800,
+  warp: 12_000,
   orbit: 3000,
   saucerBase: 5000,
   missionStep: 2500,
@@ -124,6 +125,23 @@ export const BUMPER_VALUE_MAX = 1_600;
 /** A spinner kept moving pays more each pass, decaying when it stops. */
 export const SPINNER_STEP = 60;
 export const SPINNER_VALUE_MAX = 1_400;
+
+/**
+ * Spinner passes needed to arm the warp gate on the habitrail.
+ *
+ * The spinner sits in the left orbit lane and the ramp mouth is on the right,
+ * so arming and spending the warp are opposite shots. That is the point: it
+ * gives the table a two-shot rhythm that crosses it, and it hands the spinner
+ * a purpose beyond its own climbing value, which was the only thing on the
+ * table that paid well and led nowhere.
+ *
+ * The switch fires once per pass, not once per revolution of the blade, so
+ * this is six separate trips up the lane. Measured over thirty bot games a
+ * ball delivers exactly three and never a fourth, which is why the count is
+ * banked across the game rather than reset with the ball: per ball, six is
+ * not a hard target, it is an impossible one.
+ */
+export const SPINS_TO_ARM_WARP = 6;
 
 /** Every score is doubled while a frenzy runs. */
 export const FRENZY_SECONDS = 18;

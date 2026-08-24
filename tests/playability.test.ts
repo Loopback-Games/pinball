@@ -141,6 +141,34 @@ describe('endurance', () => {
   });
 });
 
+describe('the warp gate is reachable', () => {
+  it('arms itself within a game of unskilled play', () => {
+    // The warp is armed by the spinner, and the spinner sits in the left orbit
+    // lane where a busy player who never aims at it still sends the ball. If
+    // an unskilled game cannot arm it once, the fork, the diverter and the
+    // saucer feed behind them are content nobody ever sees.
+    //
+    // Measured across thirty seeds: every game arms it, none more than once.
+    // That is the shape the threshold is tuned for — a resource that comes
+    // round about once a game for a player who ignores it, and faster for one
+    // who works the orbit.
+    const missed: number[] = [];
+    for (let seed = 1; seed <= 8; seed += 1) {
+      const game = new Game(seed);
+      const bot = makeBot();
+      game.startGame();
+      let armed = false;
+      for (let i = 0; i < 60 * 240; i += 1) {
+        if (game.phase === 'gameOver') break;
+        game.update(1 / 60, bot(game));
+        armed = armed || game.warpLit;
+      }
+      if (!armed) missed.push(seed);
+    }
+    expect(missed).toEqual([]);
+  });
+});
+
 describe('a game always ends', () => {
   it('reaches game over even if the player never touches a flipper', () => {
     const game = new Game();

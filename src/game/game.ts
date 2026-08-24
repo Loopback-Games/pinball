@@ -46,6 +46,7 @@ import {
   SLINGSHOT_REARM_SECONDS,
   SPINNER_STEP,
   SPINNER_VALUE_MAX,
+  SPINS_TO_ARM_WARP,
   TILT_LIMIT,
   rankFor,
 } from './rules.js';
@@ -105,9 +106,13 @@ export type SoundName =
   | 'kickback'
   | 'ballSave'
   | 'frenzy'
-  | 'laneChange';
+  | 'laneChange'
+  | 'warp';
 
 type BallMode = 'idle' | 'lane' | 'play' | 'saucer' | 'rail';
+
+/** Which branch of the habitrail diverter a railed ball is riding. */
+export type RailPath = 'ramp' | 'warp';
 
 interface BallEntry {
   ball: Ball;
@@ -115,6 +120,8 @@ interface BallEntry {
   /** Counts down while held in the saucer, or up while riding the rail. */
   timer: number;
   railT: number;
+  /** Which side of the diverter took this ball. Only meaningful on the rail. */
+  railPath: RailPath;
   /** Where the ball was when the confinement check last reset. */
   anchor: Vec2;
   /** Seconds the ball has stayed within `CONFINED_RADIUS` of `anchor`. */
@@ -216,6 +223,22 @@ export class Game {
   readonly litLanes = new Set<number>();
   /** Ready to fire once, saving a ball from the left outlane. */
   kickbackLit = false;
+  /**
+   * The habitrail diverter is thrown, so the next ramp shot forks into the
+   * saucer instead of running round to the left inlane.
+   */
+  warpLit = false;
+  /** Spinner passes banked towards arming the warp, 0..SPINS_TO_ARM_WARP. */
+  spinsToWarp = 0;
+  /**
+   * Spinner blade angle and how fast it is turning, for the renderer.
+   *
+   * The spinner used to be painted into the cached static layer, so the one
+   * part of the table whose whole point is that it moves was the only part
+   * that never did.
+   */
+  spinnerAngle = 0;
+  spinnerRate = 0;
   /** Current multiball jackpot, grown by bumper hits. */
   jackpotValue = JACKPOT_BASE;
   /** While positive, every score is doubled. */
@@ -275,6 +298,7 @@ export class Game {
         mode: 'idle',
         timer: 0,
         railT: 0,
+        railPath: 'ramp',
         anchor: ball.pos,
         confinedTime: 0,
       });
@@ -326,6 +350,16 @@ export class Game {
     this.multiballActive = false;
     this.multiballLit = false;
     this.bonusMultiplier = 1;
+    // The warp is banked across the whole game rather than reset with the
+    // ball. Measured over thirty bot games, a ball delivers the spinner
+    // exactly three times and never a fourth: per ball, a six pass threshold
+    // is not hard, it is unreachable, and the feature would be content nobody
+    // ever saw. Carrying it makes the spinner a resource that accumulates —
+    // roughly every second ball for a player who never aims at it, faster for
+    // one who works the left orbit — and a drain no longer wipes the shot the
+    // player was two passes from earning.
+    this.warpLit = false;
+    this.spinsToWarp = 0;
     this.resetTableState();
     for (const e of this.entries) {
       e.mode = 'idle';
@@ -366,6 +400,7 @@ export class Game {
     this.bumperHitsForValue = 0;
     this.spinnerValue = SCORE.spinner;
     this.spinnerIdle = 0;
+    this.spinnerRate = 0;
     for (const t of this.table.dropTargets) t.collider.enabled = true;
     this.lamps.clear();
   }
@@ -710,6 +745,10 @@ export class Game {
       if (ball.vel.y > -300) return;
       entry.mode = 'rail';
       entry.railT = 0;
+      // A thrown diverter takes the shot down the fork. It stays a ramp shot
+      // either way: the player made the ramp, and taking that away would make
+      // arming the warp a punishment for anyone mid-way through Ramp Rush.
+      entry.railPath = this.warpLit ? 'warp' : 'ramp';
       entry.ball.active = false;
       this.rampCount += 1;
       this.award(this.rampValue, ball.pos, 'ramp');
@@ -717,6 +756,13 @@ export class Game {
       this.bonusUnits += 3;
       this.onSound('ramp', 1);
       this.registerCombo('Ramp', ball.pos);
+      if (entry.railPath === 'warp') {
+        this.warpLit = false;
+        this.spinsToWarp = 0;
+        this.award(SCORE.warp, ball.pos, 'warp');
+        this.onSound('warp', 1);
+        this.setBanner('WARP', 'Straight to the saucer', 3);
+      }
       if (this.multiballActive) {
         this.award(this.jackpotValue, ball.pos, 'complete');
         this.onSound('jackpot', 1);
@@ -738,6 +784,21 @@ export class Game {
       this.award(Math.round(this.spinnerValue * clamp(speed / 800, 0.5, 3)), ball.pos, 'spin');
       this.onSound('spinner', clamp(speed / 1600, 0.3, 1));
       this.bonusUnits += 1;
+      // Spin the blade the way the ball went through it, and let the renderer
+      // carry it on from there.
+      this.spinnerRate = Math.sign(-ball.vel.y || 1) * clamp(speed / 42, 6, 34);
+      // Arming is a latch, not a counter that keeps climbing. Banking warps
+      // while sitting in the lane would turn one good orbit into a run of free
+      // saucer shots, and the saucer is the shot the whole campaign hangs on.
+      if (!this.warpLit) {
+        this.spinsToWarp += 1;
+        if (this.spinsToWarp >= SPINS_TO_ARM_WARP) {
+          this.spinsToWarp = SPINS_TO_ARM_WARP;
+          this.warpLit = true;
+          this.onSound('complete', 0.7);
+          this.setBanner('Warp armed', 'Shoot the ramp', 3);
+        }
+      }
       return;
     }
     if (id.startsWith('rollover-')) {
@@ -926,6 +987,11 @@ export class Game {
     if (this.spinnerIdle > 4 && this.spinnerValue > SCORE.spinner) {
       this.spinnerValue = Math.max(SCORE.spinner, this.spinnerValue - SPINNER_STEP * dt * 4);
     }
+    // The blade coasts to a stop rather than stopping with the ball, which is
+    // most of what makes a spinner read as a spinner.
+    this.spinnerAngle += this.spinnerRate * dt;
+    this.spinnerRate *= Math.pow(0.28, dt);
+    if (Math.abs(this.spinnerRate) < 0.05) this.spinnerRate = 0;
   }
 
   private updateMission(dt: number): void {
@@ -974,9 +1040,25 @@ export class Game {
       }
       if (e.mode === 'rail') {
         // Walk the ball along the habitrail at a constant speed.
-        const path = this.table.rampPath;
-        e.railT += dt * 0.55;
+        const warping = e.railPath === 'warp';
+        const path = warping ? this.table.warpPath : this.table.rampPath;
+        // The fork is a fraction of the length of the long way round, so it
+        // gets its own rate. Sharing one meant the drop into the saucer, which
+        // is the reward the whole shot is for, crawled.
+        e.railT += dt * (warping ? RAIL_RATE_WARP : RAIL_RATE_RAMP);
         if (e.railT >= 1) {
+          if (warping) {
+            // Delivered into the cup from above, where it is held and handled
+            // exactly as a shot into the saucer mouth would be.
+            e.mode = 'saucer';
+            e.ball.active = false;
+            e.ball.pos = this.table.saucer.center;
+            e.ball.vel = vec(0, 0);
+            e.timer = 1.6;
+            this.onSound('saucer', 1);
+            this.onSaucer();
+            continue;
+          }
           const exit = path[path.length - 1] ?? this.table.plunger;
           e.mode = 'play';
           e.ball.active = true;
@@ -1213,6 +1295,16 @@ export function pointAlong(path: readonly Vec2[], t: number): Vec2 {
   return lerp(path[index]!, path[index + 1]!, local);
 }
 
+/**
+ * How fast a railed ball walks its path, as a fraction of the path per second.
+ *
+ * Authored per branch rather than derived from length, because the two want
+ * different pacing: the long way round is a ride to watch, and the fork is a
+ * drop that should land while the shot still feels like one motion.
+ */
+const RAIL_RATE_RAMP = 0.55;
+const RAIL_RATE_WARP = 1.25;
+
 const HUES: Record<string, number> = {
   bumper: 190,
   sling: 45,
@@ -1221,6 +1313,7 @@ const HUES: Record<string, number> = {
   spin: 210,
   lane: 55,
   ramp: 275,
+  warp: 255,
   orbit: 195,
   saucer: 30,
   mission: 285,

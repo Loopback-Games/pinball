@@ -354,6 +354,13 @@ export class Audio {
       case 'ramp':
         this.tone(t, 'sawtooth', 320, 1400, 0.34, 0.24);
         break;
+      // The diverter throwing, then the drop: a hard clack and a falling
+      // sweep, so the fork is audible before the ball is seen to take it.
+      case 'warp':
+        this.noiseBurst(t, 0.05, 5200, 0.3, 2600, this.sfxBus);
+        this.tone(t + 0.04, 'sawtooth', 1800, 260, 0.42, 0.22);
+        this.tone(t + 0.04, 'sine', 900, 130, 0.42, 0.16);
+        break;
       case 'saucer':
         this.chord(t, [523, 659, 784], 0.4, 0.16);
         break;

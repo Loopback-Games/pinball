@@ -186,6 +186,22 @@ export interface Table {
   saucer: { center: Vec2; radius: number };
   /** Path a captured ball follows along the habitrail, entry first. */
   rampPath: Vec2[];
+  /**
+   * The other side of the diverter: the short fork that drops out of the
+   * habitrail and into the saucer, entry first.
+   *
+   * It shares the ramp's mouth and its climb, so the two paths are identical
+   * until the fork and the rule layer only has to pick one of them.
+   */
+  warpPath: Vec2[];
+  /** Where the habitrail splits, so the diverter blade can be drawn on it. */
+  warpFork: Vec2;
+  /**
+   * Index of the fork in both paths. Everything before it is the same wire,
+   * which is what lets the renderer draw one trunk and two branches instead of
+   * two whole rails stacked on each other.
+   */
+  warpForkIndex: number;
   rollovers: Vec2[];
   /** Insert lamps showing how many missions have been completed. */
   missionLamps: Vec2[];
@@ -419,12 +435,16 @@ export function buildTable(): Table {
   // way.
   // Routed to stay clear of the bumpers above and the target banks below, so
   // it never hides a shot the player needs to see.
+  //
+  // The climb is shared by both branches of the diverter, which is why it is
+  // authored once. A fork drawn from two independently authored curves shows
+  // the seam at the junction however carefully the numbers are matched.
+  const rampClimb: Vec2[] = [rampEntry, vec(436, 496), vec(444, 424), vec(416, 344)];
+  /** Where the diverter blade sits, and where the two branches part company. */
+  const warpFork = vec(346, 292);
   const rampPath: Vec2[] = smoothPath([
-    rampEntry,
-    vec(436, 496),
-    vec(444, 424),
-    vec(416, 344),
-    vec(346, 292),
+    ...rampClimb,
+    warpFork,
     vec(250, 282),
     vec(166, 316),
     vec(118, 388),
@@ -433,6 +453,27 @@ export function buildTable(): Table {
     vec(86, 620),
     vec(82, 676),
   ]);
+
+  // The short way round. The saucer sits directly under the apex of the ramp,
+  // so the fork is a drop of barely a hundred units rather than a second rail
+  // needing playfield of its own — and there is none to give it. Anything
+  // crossing the table above the bumpers has to run through the rollover
+  // inserts, and a wireform over those hides the lanes the player is aiming at.
+  //
+  // It passes down the right-hand side of the saucer rather than straight down
+  // the middle. Dead centre it lies along the corridor from the flippers to
+  // the bumper nest and reads, from the shooter's end of the table, as a wall
+  // across the shot.
+  const warpPath: Vec2[] = smoothPath([
+    ...rampClimb,
+    warpFork,
+    vec(316, 320),
+    vec(282, 358),
+    saucerCenter,
+  ]);
+  // The sampler emits each control point exactly, so the fork is at whichever
+  // index it landed on rather than at one worked out from the sample rate.
+  const warpForkIndex = rampPath.findIndex((p) => p.x === warpFork.x && p.y === warpFork.y);
 
   /* --- Posts ------------------------------------------------------------ */
 
@@ -589,6 +630,9 @@ export function buildTable(): Table {
     posts,
     saucer: { center: saucerCenter, radius: saucerRadius },
     rampPath,
+    warpPath,
+    warpFork,
+    warpForkIndex,
     rollovers,
     missionLamps,
     plunger: {
