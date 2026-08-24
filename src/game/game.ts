@@ -109,7 +109,8 @@ export type SoundName =
   | 'ballSave'
   | 'frenzy'
   | 'laneChange'
-  | 'warp';
+  | 'warp'
+  | 'eruption';
 
 type BallMode = 'idle' | 'lane' | 'play' | 'saucer' | 'rail';
 
@@ -244,6 +245,17 @@ export class Game {
   warpLit = false;
   /** Spinner passes banked towards arming the warp, 0..SPINS_TO_ARM_WARP. */
   spinsToWarp = 0;
+  /**
+   * Distinct bumpers struck inside the rolling window, and what is left of it.
+   *
+   * Rolling rather than fixed from the first hit: sweeping a packed nest is
+   * already the hard part, and a fixed window turns the last bumper into a
+   * lottery rather than a shot.
+   */
+  private readonly sweptBumpers = new Set<string>();
+  private eruptionWindow = 0;
+  /** While positive, the vent is open. Public: the art and the rules read it. */
+  eruptionTimer = 0;
   /**
    * Spinner blade angle and how fast it is turning, for the renderer.
    *
@@ -416,6 +428,9 @@ export class Game {
     this.spinnerValue = SCORE.spinner;
     this.spinnerIdle = 0;
     this.spinnerRate.fill(0);
+    this.sweptBumpers.clear();
+    this.eruptionWindow = 0;
+    this.eruptionTimer = 0;
     for (const t of this.table.dropTargets) t.collider.enabled = true;
     this.lamps.clear();
   }
@@ -665,6 +680,7 @@ export class Game {
       ) {
         this.advanceMission(1);
       }
+      this.trackSweep(id, c.point);
       return;
     }
     if (id.startsWith('sling-')) {
@@ -927,6 +943,34 @@ export class Game {
     this.beginMission(this.missionsCompleted % this.machine.missions.length);
   }
 
+  /**
+   * Watch for every bumper being struck inside the window.
+   *
+   * Only a machine that declares an eruption tracks this at all, following the
+   * same pattern as the diverter: the rules read the table, never the id of
+   * the machine they happen to be running on.
+   */
+  private trackSweep(id: string, at: Vec2): void {
+    const spec = this.table.eruption;
+    if (!spec) return;
+    if (this.eruptionWindow <= 0) this.sweptBumpers.clear();
+    this.eruptionWindow = spec.window;
+    this.sweptBumpers.add(id);
+    if (this.sweptBumpers.size < this.table.bumpers.length) return;
+
+    this.sweptBumpers.clear();
+    this.eruptionWindow = 0;
+    this.eruptionTimer = spec.seconds;
+    // Reuses the frenzy the standup bank already lights, rather than inventing
+    // a second doubling that would have to be reconciled with it.
+    this.frenzyTimer = Math.max(this.frenzyTimer, FRENZY_SECONDS);
+    this.award(SCORE.eruption, at, 'complete');
+    this.registerCombo(spec.name, at);
+    this.onSound('eruption', 1);
+    this.setBanner(spec.name.toUpperCase(), `Everything scores x${FRENZY_MULTIPLIER}`, 3);
+    for (const b of this.table.bumpers) this.lamps.set(b.id, 1);
+  }
+
   private advanceMission(amount: number): void {
     if (this.activeMission < 0) return;
     const spec = this.machine.missions[this.activeMission];
@@ -1015,6 +1059,10 @@ export class Game {
     if (this.spinnerIdle > 4 && this.spinnerValue > SCORE.spinner) {
       this.spinnerValue = Math.max(SCORE.spinner, this.spinnerValue - SPINNER_STEP * dt * 4);
     }
+    this.eruptionWindow = Math.max(0, this.eruptionWindow - dt);
+    if (this.eruptionWindow === 0 && this.eruptionTimer <= 0) this.sweptBumpers.clear();
+    this.eruptionTimer = Math.max(0, this.eruptionTimer - dt);
+
     // Each blade coasts to a stop rather than stopping with the ball, which is
     // most of what makes a spinner read as a spinner.
     const decay = Math.pow(0.28, dt);
@@ -1064,7 +1112,9 @@ export class Game {
           e.ball.pos = vec(this.table.saucer.center.x, this.table.saucer.center.y + 26);
           this.saucerEjects += 1;
           const side = this.saucerEjects % 2 === 0 ? -1 : 1;
-          e.ball.vel = vec(side * 380, 1050);
+          // A vent that is already going does not place the ball, it spits it.
+          const power = this.eruptionTimer > 0 ? 1.7 : 1;
+          e.ball.vel = vec(side * 380 * power, 1050 * power);
           e.ball.idleTime = 0;
         }
         continue;

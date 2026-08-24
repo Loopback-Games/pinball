@@ -175,6 +175,11 @@ export function buildMoltenTable(): Table {
     spinners,
     saucer: { center: saucerCenter, radius: saucerRadius },
     saucerLabel: 'CRUCIBLE',
+    // Four bumpers packed into a diamond is a nest a ball rattles around in,
+    // so sweeping all four is a shot rather than an accident. Six seconds is
+    // long enough that a good rattle does it and short enough that drifting
+    // through the nest twice does not.
+    eruption: { window: 6, seconds: 12, name: 'Eruption' },
     rollovers,
     missionLamps,
     decals,

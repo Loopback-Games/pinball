@@ -10,6 +10,7 @@ export const SCORE = {
   dropBankComplete: 6500,
   standupTarget: 420,
   standupBankComplete: 4000,
+  eruption: 15_000,
   spinner: 190,
   rollover: 300,
   rolloverSetComplete: 5000,

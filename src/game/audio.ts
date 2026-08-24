@@ -361,6 +361,16 @@ export class Audio {
         this.tone(t + 0.04, 'sawtooth', 1800, 260, 0.42, 0.22);
         this.tone(t + 0.04, 'sine', 900, 130, 0.42, 0.16);
         break;
+      // A vent letting go: a low crack, then a long roar under a rising
+      // whistle. Deliberately the loudest thing on the table.
+      case 'eruption':
+        this.tone(t, 'sawtooth', 90, 40, 0.9, 0.34);
+        this.noiseBurst(t, 0.85, 900, 0.32, 240, this.sfxBus);
+        this.tone(t + 0.06, 'square', 240, 1500, 0.7, 0.16);
+        [523, 659, 880].forEach((f, i) => {
+          this.tone(t + 0.1 + i * 0.09, 'sawtooth', f, f * 1.4, 0.4, 0.14);
+        });
+        break;
       case 'saucer':
         this.chord(t, [523, 659, 784], 0.4, 0.16);
         break;

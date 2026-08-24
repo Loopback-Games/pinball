@@ -219,6 +219,22 @@ export type Decal =
   /** A dashed run, used for the shooter lane and for guiding the eye up a shot. */
   | { kind: 'dashes'; from: Vec2; to: Vec2; color: DecalColor };
 
+/**
+ * Strike every pop bumper inside `window` seconds and the table goes off.
+ *
+ * Absent on a machine whose bumpers are not meant to be swept as a set: on a
+ * row of three that a ball passes straight through, hitting all of them is
+ * luck rather than a shot, and rewarding luck teaches nothing.
+ */
+export interface EruptionSpec {
+  /** Seconds each hit buys before the set lapses. Rolling, not fixed. */
+  window: number;
+  /** Seconds the vent stays open. */
+  seconds: number;
+  /** What the table calls it. */
+  name: string;
+}
+
 export interface Table {
   colliders: Collider[];
   sensors: Sensor[];
@@ -234,6 +250,8 @@ export interface Table {
   saucer: { center: Vec2; radius: number };
   /** What the saucer is called on this machine, printed under the cup. */
   saucerLabel: string;
+  /** Sweeping every bumper sets the table off, on a machine that has this. */
+  eruption?: EruptionSpec;
 
   /**
    * Path a captured ball follows along the habitrail, entry first.
