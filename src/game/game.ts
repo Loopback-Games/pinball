@@ -19,8 +19,10 @@ import {
   LANE_RIGHT,
   PLAY_LEFT,
   TABLE_H,
-  buildTable,
 } from './table.js';
+import type { Machine } from './machine.js';
+import { rankFor } from './machine.js';
+import { DEFAULT_MACHINE } from './machines/index.js';
 import {
   BALLS_PER_GAME,
   BALL_SAVE_SECONDS,
@@ -35,7 +37,6 @@ import {
   JACKPOT_BASE,
   JACKPOT_MAX,
   JACKPOT_PER_BUMPER,
-  MISSIONS,
   MISSIONS_FOR_MULTIBALL,
   MISSION_SECONDS,
   SCORE,
@@ -48,7 +49,6 @@ import {
   SPINNER_VALUE_MAX,
   SPINS_TO_ARM_WARP,
   TILT_LIMIT,
-  rankFor,
 } from './rules.js';
 
 export type Phase = 'attract' | 'ready' | 'playing' | 'ballOver' | 'gameOver';
@@ -151,6 +151,8 @@ const CONFINED_RADIUS = 70;
 const CONFINED_SECONDS = 6;
 
 export class Game {
+  /** The machine being played: its layout, its art and its campaign. */
+  readonly machine: Machine;
   readonly table: Table;
   readonly world: World;
   /**
@@ -179,7 +181,7 @@ export class Game {
   tiltWarnings = 0;
   tilted = false;
 
-  /** Index into MISSIONS, or -1 when no mission is running. */
+  /** Index into the machine's mission list, or -1 when none is running. */
   activeMission = -1;
   missionProgress = 0;
   missionTimer = 0;
@@ -237,8 +239,8 @@ export class Game {
    * part of the table whose whole point is that it moves was the only part
    * that never did.
    */
-  spinnerAngle = 0;
-  spinnerRate = 0;
+  readonly spinnerAngle: number[];
+  readonly spinnerRate: number[];
   /** Current multiball jackpot, grown by bumper hits. */
   jackpotValue = JACKPOT_BASE;
   /** While positive, every score is doubled. */
@@ -282,9 +284,12 @@ export class Game {
 
   onSound: (name: SoundName, intensity: number) => void = () => {};
 
-  constructor(seed = 0x5eed) {
+  constructor(seed = 0x5eed, machine: Machine = DEFAULT_MACHINE) {
     this.random = mulberry32(seed);
-    this.table = buildTable();
+    this.machine = machine;
+    this.table = machine.buildTable();
+    this.spinnerAngle = this.table.spinners.map(() => 0);
+    this.spinnerRate = this.table.spinners.map(() => 0);
     this.world = new World(DEFAULT_WORLD);
     this.world.statics = this.table.colliders;
     this.world.movers = this.table.flippers;
@@ -316,7 +321,7 @@ export class Game {
   }
 
   get rank(): string {
-    return rankFor(this.missionsCompleted);
+    return rankFor(this.machine, this.missionsCompleted);
   }
 
   /** What the score is worth right now, before the base value of the shot. */
@@ -400,7 +405,7 @@ export class Game {
     this.bumperHitsForValue = 0;
     this.spinnerValue = SCORE.spinner;
     this.spinnerIdle = 0;
-    this.spinnerRate = 0;
+    this.spinnerRate.fill(0);
     for (const t of this.table.dropTargets) t.collider.enabled = true;
     this.lamps.clear();
   }
@@ -644,7 +649,10 @@ export class Game {
       if (this.multiballActive) {
         this.jackpotValue = Math.min(JACKPOT_MAX, this.jackpotValue + JACKPOT_PER_BUMPER);
       }
-      if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'sweep') {
+      if (
+        this.activeMission >= 0 &&
+        this.machine.missions[this.activeMission]?.id === 'sweep'
+      ) {
         this.advanceMission(1);
       }
       return;
@@ -670,7 +678,7 @@ export class Game {
       this.award(SCORE.dropTarget, c.point, 'drop');
       this.onSound('drop', 0.8);
       this.bonusUnits += 2;
-      if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'fuel') {
+      if (this.activeMission >= 0 && this.machine.missions[this.activeMission]?.id === 'fuel') {
         this.advanceMission(1);
       }
       if (this.dropsDown.size === this.table.dropTargets.length) {
@@ -695,7 +703,7 @@ export class Game {
       // Mission progress counts every hit. Counting only targets not yet in
       // the bank set meant a ball rattling between two of them never advanced
       // the mission, because the set only clears once all five are collected.
-      if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'lock') {
+      if (this.activeMission >= 0 && this.machine.missions[this.activeMission]?.id === 'lock') {
         this.advanceMission(1);
       }
       if (!this.standupsHit.has(id)) {
@@ -748,7 +756,7 @@ export class Game {
       // A thrown diverter takes the shot down the fork. It stays a ramp shot
       // either way: the player made the ramp, and taking that away would make
       // arming the warp a punishment for anyone mid-way through Ramp Rush.
-      entry.railPath = this.warpLit ? 'warp' : 'ramp';
+      entry.railPath = this.warpLit && this.table.warpPath ? 'warp' : 'ramp';
       entry.ball.active = false;
       this.rampCount += 1;
       this.award(this.rampValue, ball.pos, 'ramp');
@@ -771,12 +779,12 @@ export class Game {
       } else {
         this.setBanner('Ramp', `+${this.rampValue.toLocaleString()} next`);
       }
-      if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'ramp') {
+      if (this.activeMission >= 0 && this.machine.missions[this.activeMission]?.id === 'ramp') {
         this.advanceMission(1);
       }
       return;
     }
-    if (id === 'spinner') {
+    if (id.startsWith('spinner-')) {
       const speed = Math.hypot(ball.vel.x, ball.vel.y);
       if (speed < 200) return;
       this.spinnerIdle = 0;
@@ -784,13 +792,19 @@ export class Game {
       this.award(Math.round(this.spinnerValue * clamp(speed / 800, 0.5, 3)), ball.pos, 'spin');
       this.onSound('spinner', clamp(speed / 1600, 0.3, 1));
       this.bonusUnits += 1;
-      // Spin the blade the way the ball went through it, and let the renderer
-      // carry it on from there.
-      this.spinnerRate = Math.sign(-ball.vel.y || 1) * clamp(speed / 42, 6, 34);
+      // Spin the blade the ball actually went through, the way it went through
+      // it, and let the renderer carry it on from there.
+      const which = Number.parseInt(id.slice('spinner-'.length), 10);
+      if (which >= 0 && which < this.spinnerRate.length) {
+        this.spinnerRate[which] = Math.sign(-ball.vel.y || 1) * clamp(speed / 42, 6, 34);
+      }
       // Arming is a latch, not a counter that keeps climbing. Banking warps
       // while sitting in the lane would turn one good orbit into a run of free
       // saucer shots, and the saucer is the shot the whole campaign hangs on.
-      if (!this.warpLit) {
+      // A machine with no diverter has nothing for the spinner to arm, so it
+      // never banks progress towards one. Lighting a shot the table does not
+      // have would be worse than having no warp at all.
+      if (this.table.warpFork && !this.warpLit) {
         this.spinsToWarp += 1;
         if (this.spinsToWarp >= SPINS_TO_ARM_WARP) {
           this.spinsToWarp = SPINS_TO_ARM_WARP;
@@ -831,7 +845,10 @@ export class Game {
         this.award(SCORE.orbit, ball.pos, 'orbit');
         this.registerCombo('Orbit', ball.pos);
         this.setBanner('Orbit', `${this.orbitCount} complete`);
-        if (this.activeMission >= 0 && MISSIONS[this.activeMission]?.id === 'orbit') {
+        if (
+          this.activeMission >= 0 &&
+          this.machine.missions[this.activeMission]?.id === 'orbit'
+        ) {
           this.advanceMission(1);
         }
       }
@@ -896,12 +913,12 @@ export class Game {
       return;
     }
     this.award(SCORE.saucerBase, this.table.saucer.center, 'saucer');
-    this.beginMission(this.missionsCompleted % MISSIONS.length);
+    this.beginMission(this.missionsCompleted % this.machine.missions.length);
   }
 
   private advanceMission(amount: number): void {
     if (this.activeMission < 0) return;
-    const spec = MISSIONS[this.activeMission];
+    const spec = this.machine.missions[this.activeMission];
     if (!spec) return;
     this.missionProgress += amount;
     this.award(SCORE.missionStep, this.table.saucer.center, 'mission');
@@ -931,8 +948,8 @@ export class Game {
     // away. Requiring a fresh saucer shot for every rank meant the shot that
     // gates all of them had to be made four or five times in a game, and
     // almost nobody saw past the first.
-    if (this.missionsCompleted < MISSIONS.length) {
-      this.beginMission(this.missionsCompleted % MISSIONS.length);
+    if (this.missionsCompleted < this.machine.missions.length) {
+      this.beginMission(this.missionsCompleted % this.machine.missions.length);
     }
   }
 
@@ -948,12 +965,12 @@ export class Game {
     if (this.activeMission >= 0 || this.multiballActive) return;
     if (this.missionStartedThisBall) return;
     this.missionStartedThisBall = true;
-    this.beginMission(this.missionsCompleted % MISSIONS.length);
+    this.beginMission(this.missionsCompleted % this.machine.missions.length);
   }
 
   /** Put a mission on the clock and announce it. */
   private beginMission(index: number): void {
-    const spec = MISSIONS[index];
+    const spec = this.machine.missions[index];
     if (!spec) return;
     this.activeMission = index;
     this.missionProgress = 0;
@@ -987,18 +1004,21 @@ export class Game {
     if (this.spinnerIdle > 4 && this.spinnerValue > SCORE.spinner) {
       this.spinnerValue = Math.max(SCORE.spinner, this.spinnerValue - SPINNER_STEP * dt * 4);
     }
-    // The blade coasts to a stop rather than stopping with the ball, which is
+    // Each blade coasts to a stop rather than stopping with the ball, which is
     // most of what makes a spinner read as a spinner.
-    this.spinnerAngle += this.spinnerRate * dt;
-    this.spinnerRate *= Math.pow(0.28, dt);
-    if (Math.abs(this.spinnerRate) < 0.05) this.spinnerRate = 0;
+    const decay = Math.pow(0.28, dt);
+    for (let i = 0; i < this.spinnerRate.length; i += 1) {
+      const rate = this.spinnerRate[i] ?? 0;
+      this.spinnerAngle[i] = (this.spinnerAngle[i] ?? 0) + rate * dt;
+      this.spinnerRate[i] = Math.abs(rate * decay) < 0.05 ? 0 : rate * decay;
+    }
   }
 
   private updateMission(dt: number): void {
     if (this.activeMission < 0) return;
     this.missionTimer -= dt;
     if (this.missionTimer > 0) return;
-    const spec = MISSIONS[this.activeMission];
+    const spec = this.machine.missions[this.activeMission];
     this.activeMission = -1;
     this.missionProgress = 0;
     if (spec) this.setBanner('Mission expired', spec.name, 3);
@@ -1042,6 +1062,13 @@ export class Game {
         // Walk the ball along the habitrail at a constant speed.
         const warping = e.railPath === 'warp';
         const path = warping ? this.table.warpPath : this.table.rampPath;
+        // Nothing can enter this mode without a rail to enter it from, but a
+        // ball stuck in a mode with no path would be a ball silently lost.
+        if (!path || path.length === 0) {
+          e.mode = 'play';
+          e.ball.active = true;
+          continue;
+        }
         // The fork is a fraction of the length of the long way round, so it
         // gets its own rate. Sharing one meant the drop into the saucer, which
         // is the reward the whole shot is for, crawled.

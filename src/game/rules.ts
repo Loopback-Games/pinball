@@ -42,59 +42,13 @@ export interface MissionSpec {
   target: number;
 }
 
-/**
- * The mission list doubles as the rank ladder: each completion promotes the
- * player one step, in the spirit of Space Cadet's rank progression.
- *
- * They are ordered by how often the table actually gives you the shot, easiest
- * first, measured from bot play rather than guessed. A player always meets the
- * first one first, so if the early ones are hard nobody ever sees the rest of
- * the rules, multiball included.
+/*
+ * The mission list and the rank ladder now live on each machine, because they
+ * describe a particular playfield: a campaign that asks for a ramp shot is
+ * unfinishable on a machine with no ramp, and a mission nobody can finish
+ * stalls every rank behind it. What stays here is the shape they take and the
+ * rules that govern all of them.
  */
-export const MISSIONS: readonly MissionSpec[] = [
-  {
-    id: 'lock',
-    name: 'Target Lock',
-    brief: 'Hit three standup targets',
-    target: 3,
-  },
-  {
-    id: 'fuel',
-    name: 'Fuel Cells',
-    brief: 'Drop all three fuel targets',
-    target: 3,
-  },
-  {
-    id: 'sweep',
-    name: 'Bumper Sweep',
-    brief: 'Strike the pop bumpers 5 times',
-    target: 5,
-  },
-  {
-    id: 'ramp',
-    name: 'Ramp Rush',
-    brief: 'Make two ramp shots',
-    target: 2,
-  },
-  {
-    id: 'orbit',
-    name: 'Orbit Run',
-    brief: 'Complete a full orbit',
-    target: 1,
-  },
-];
-
-export const RANKS: readonly string[] = [
-  'Cadet',
-  'Ensign',
-  'Lieutenant',
-  'Commander',
-  'Captain',
-  'Admiral',
-];
-
-export const rankFor = (missionsCompleted: number): string =>
-  RANKS[Math.min(missionsCompleted, RANKS.length - 1)] ?? 'Cadet';
 
 /* ------------------------------------------------------------------ *
  * Dynamic scoring

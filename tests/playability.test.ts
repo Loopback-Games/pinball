@@ -3,10 +3,11 @@ import { Game, noIntents } from '../src/game/game.js';
 import { mulberry32 } from '../src/engine/random.js';
 import type { Intents, SoundName } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
+import { DEFAULT_MACHINE } from '../src/game/machines/index.js';
 import { overlap } from '../src/engine/shapes.js';
-import { BALL_RADIUS, DRAIN_Y, buildTable } from '../src/game/table.js';
+import { BALL_RADIUS, DRAIN_Y } from '../src/game/table.js';
 
-const table = buildTable();
+const table = DEFAULT_MACHINE.buildTable();
 /** True if a ball placed here would start inside solid geometry. */
 const insideSolid = (x: number, y: number): boolean =>
   table.colliders.some((c) => overlap(c, vec(x, y), BALL_RADIUS) !== null);

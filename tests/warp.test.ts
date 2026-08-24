@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { Game, noIntents } from '../src/game/game.js';
 import type { Intents } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
+import { DEFAULT_MACHINE } from '../src/game/machines/index.js';
 import { MISSION_SECONDS, SPINS_TO_ARM_WARP } from '../src/game/rules.js';
-import { buildTable } from '../src/game/table.js';
 
 /** Run the game forward at a steady 60 frames per second. */
 function run(game: Game, seconds: number, intents: Intents = noIntents()): void {
@@ -175,7 +175,18 @@ describe('the warp gate', () => {
 });
 
 describe('the warp fork geometry', () => {
-  const table = buildTable();
+  const built = DEFAULT_MACHINE.buildTable();
+  // Orbit Cadet is the machine with the diverter, so this suite asserts the
+  // fork exists before measuring it. A machine without one is a different
+  // shape, not a broken one.
+  const rampPath = built.rampPath;
+  const warpPath = built.warpPath;
+  const warpFork = built.warpFork;
+  const warpForkIndex = built.warpForkIndex;
+  if (!rampPath || !warpPath || !warpFork || warpForkIndex === undefined) {
+    throw new Error('the default machine has no diverter to measure');
+  }
+  const table = { ...built, rampPath, warpPath, warpFork, warpForkIndex };
 
   it('shares the ramp mouth and ends in the saucer', () => {
     const rampStart = table.rampPath[0];

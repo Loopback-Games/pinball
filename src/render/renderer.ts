@@ -1,9 +1,8 @@
 import type { Game } from '../game/game.js';
 import { pointAlong } from '../game/game.js';
-import type { Table } from '../game/table.js';
+import type { DecalColor, SpinnerSpec, Table } from '../game/table.js';
 import {
   BALL_RADIUS,
-  DOME_CENTER,
   LANE_CENTER,
   LANE_FLOOR,
   LANE_RIGHT,
@@ -15,18 +14,11 @@ import {
   TABLE_H,
   TABLE_W,
 } from '../game/table.js';
-import { MISSIONS, SCORE, SPINNER_VALUE_MAX, SPINS_TO_ARM_WARP } from '../game/rules.js';
+import { SCORE, SPINNER_VALUE_MAX, SPINS_TO_ARM_WARP } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp } from '../engine/vec2.js';
-import { PALETTE, seeded } from './palette.js';
-
-/**
- * Centre of the spinner, matching the sensor the rule layer watches.
- *
- * The sensor is a box in the left orbit lane; this is its middle. Drawn
- * anywhere else the blade turns somewhere the ball is not.
- */
-const SPINNER_AT = { x: 51, y: 568 };
+import type { Theme } from './theme.js';
+import { ORBIT_THEME, seeded, withAlpha } from './theme.js';
 
 /** Width the audio buttons occupy in the top-right corner, in CSS pixels. */
 const AUDIO_BUTTON_SPAN = 96;
@@ -78,6 +70,14 @@ export class Renderer {
   private height = 0;
   private dpr = 1;
   private buttons: Button[] = [];
+  /**
+   * The colour scheme of the machine being drawn.
+   *
+   * Held rather than imported, because it changes when the player picks a
+   * different machine and the cached static layer has to be repainted in the
+   * new colours.
+   */
+  private theme: Theme = ORBIT_THEME;
   /** Blade position at the habitrail fork, 0 on the ramp, 1 on the warp. */
   private diverter = 0;
   private diverterTime = 0;
@@ -160,9 +160,9 @@ export class Renderer {
 
   private paintPlayfield(g: CanvasRenderingContext2D): void {
     const base = g.createLinearGradient(0, 0, 0, TABLE_H);
-    base.addColorStop(0, PALETTE.playfieldTop);
+    base.addColorStop(0, this.theme.playfieldTop);
     base.addColorStop(0.55, '#0a1229');
-    base.addColorStop(1, PALETTE.playfieldBottom);
+    base.addColorStop(1, this.theme.playfieldBottom);
     g.fillStyle = base;
     g.fillRect(0, 0, TABLE_W, TABLE_H);
 
@@ -173,7 +173,7 @@ export class Renderer {
       const y = rand() * TABLE_H;
       const r = rand() * 1.1 + 0.25;
       g.globalAlpha = 0.15 + rand() * 0.6;
-      g.fillStyle = rand() > 0.85 ? PALETTE.cyan : '#ffffff';
+      g.fillStyle = rand() > 0.85 ? this.theme.primary : '#ffffff';
       g.beginPath();
       g.arc(x, y, r, 0, Math.PI * 2);
       g.fill();
@@ -196,101 +196,104 @@ export class Renderer {
     g.fillRect(0, 0, TABLE_W, TABLE_H);
   }
 
+  /**
+   * Playfield printing, painted from the table's own decal list.
+   *
+   * This used to be drawing code with the space table's coordinates written
+   * into it, which meant the art could only ever describe one layout. Each
+   * machine now authors its decals beside the geometry they annotate.
+   */
   private paintDecor(g: CanvasRenderingContext2D, table: Table): void {
-    // Concentric rings echoing the dome, as playfield printing.
-    g.strokeStyle = 'rgba(120, 180, 255, 0.10)';
-    for (let r = 96; r < 260; r += 34) {
-      g.lineWidth = 1.4;
-      g.beginPath();
-      g.arc(DOME_CENTER.x, DOME_CENTER.y, r, Math.PI, Math.PI * 2);
-      g.stroke();
-    }
-
-    // Arrow inserts pointing at the two big shots.
-    const arrow = (x: number, y: number, angle: number, color: string): void => {
+    for (const d of table.decals) {
+      const color = this.decalColor(d.color);
       g.save();
-      g.translate(x, y);
-      g.rotate(angle);
-      g.globalAlpha = 0.5;
-      g.fillStyle = color;
-      g.beginPath();
-      g.moveTo(0, -13);
-      g.lineTo(10, 6);
-      g.lineTo(0, 1);
-      g.lineTo(-10, 6);
-      g.closePath();
-      g.fill();
-      g.restore();
-    };
-    arrow(404, 624, 0, PALETTE.violet);
-    arrow(table.saucer.center.x, table.saucer.center.y + 62, 0, PALETTE.violet);
-    arrow(51, 616, 0, PALETTE.cyan);
-
-    // Bases for the mission lamps, and the label above them.
-    g.save();
-    g.textAlign = 'center';
-    g.fillStyle = 'rgba(166, 123, 255, 0.55)';
-    g.font = '700 9px ui-monospace, Menlo, monospace';
-    g.fillText('RANK PROGRESS', 278, 578);
-    for (const p of table.missionLamps) {
-      g.beginPath();
-      g.arc(p.x, p.y, 9, 0, Math.PI * 2);
-      g.fillStyle = 'rgba(8, 12, 26, 0.85)';
-      g.fill();
-      g.strokeStyle = 'rgba(166, 123, 255, 0.4)';
-      g.lineWidth = 1.5;
-      g.stroke();
-    }
-    g.restore();
-
-    // Lane arrows pointing up the inlanes and outlanes.
-    for (const x of [43, 81, PLAY_RIGHT - 43, PLAY_RIGHT - 81]) {
-      g.save();
-      g.globalAlpha = 0.35;
-      g.strokeStyle = PALETTE.cyan;
-      g.lineWidth = 2;
-      for (let i = 0; i < 3; i += 1) {
-        const y = 792 + i * 22;
-        g.beginPath();
-        g.moveTo(x - 8, y + 8);
-        g.lineTo(x, y);
-        g.lineTo(x + 8, y + 8);
-        g.stroke();
+      switch (d.kind) {
+        case 'ring':
+          g.strokeStyle = withAlpha(color, 0.1);
+          g.lineWidth = 1.4;
+          g.beginPath();
+          g.arc(d.at.x, d.at.y, d.radius, Math.PI, Math.PI * 2);
+          g.stroke();
+          break;
+        case 'arrow':
+          g.translate(d.at.x, d.at.y);
+          g.rotate(d.angle);
+          g.globalAlpha = 0.5;
+          g.fillStyle = color;
+          g.beginPath();
+          g.moveTo(0, -13);
+          g.lineTo(10, 6);
+          g.lineTo(0, 1);
+          g.lineTo(-10, 6);
+          g.closePath();
+          g.fill();
+          break;
+        case 'label':
+          g.textAlign = 'center';
+          g.fillStyle = withAlpha(color, 0.55);
+          g.font = `700 ${d.size ?? 9}px ui-monospace, Menlo, monospace`;
+          g.fillText(d.text, d.at.x, d.at.y);
+          break;
+        case 'chevrons':
+          g.globalAlpha = 0.35;
+          g.strokeStyle = color;
+          g.lineWidth = 2;
+          for (let i = 0; i < d.count; i += 1) {
+            const y = d.at.y + i * 22;
+            g.beginPath();
+            g.moveTo(d.at.x - 8, y + 8);
+            g.lineTo(d.at.x, y);
+            g.lineTo(d.at.x + 8, y + 8);
+            g.stroke();
+          }
+          break;
+        case 'dashes':
+          g.globalAlpha = 0.3;
+          g.strokeStyle = color;
+          g.lineWidth = 1.5;
+          g.setLineDash([6, 10]);
+          g.beginPath();
+          g.moveTo(d.from.x, d.from.y);
+          g.lineTo(d.to.x, d.to.y);
+          g.stroke();
+          break;
       }
       g.restore();
     }
 
-    // The spinner's frame and the well it sits in. The blade itself is drawn
-    // every frame instead, because it turns: painted into the cached layer,
-    // the one part of the table whose whole point is that it moves was the
-    // only part that never did.
-    g.save();
-    g.translate(SPINNER_AT.x, SPINNER_AT.y);
-    const well = g.createLinearGradient(0, -16, 0, 16);
-    well.addColorStop(0, 'rgba(4, 8, 18, 0.9)');
-    well.addColorStop(1, 'rgba(12, 22, 44, 0.75)');
-    g.fillStyle = well;
-    g.fillRect(-22, -16, 44, 32);
-    g.strokeStyle = 'rgba(60, 224, 255, 0.55)';
-    g.lineWidth = 2;
-    g.strokeRect(-22, -16, 44, 32);
-    // Posts the blade hangs between.
-    g.fillStyle = PALETTE.railMid;
-    g.fillRect(-23, -17, 3, 34);
-    g.fillRect(20, -17, 3, 34);
-    g.restore();
+    // Bases for the mission lamps: unlit sockets, so the row reads as a row
+    // even before any of it is earned.
+    for (const p of table.missionLamps) {
+      g.beginPath();
+      g.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      g.fillStyle = withAlpha(this.theme.playfieldBottom, 0.85);
+      g.fill();
+      g.strokeStyle = withAlpha(this.theme.feature, 0.4);
+      g.lineWidth = 1.5;
+      g.stroke();
+    }
 
-    // Shooter lane floor markings.
-    g.save();
-    g.globalAlpha = 0.3;
-    g.strokeStyle = PALETTE.amber;
-    g.lineWidth = 1.5;
-    g.setLineDash([6, 10]);
-    g.beginPath();
-    g.moveTo(LANE_CENTER, LANE_FLOOR - 20);
-    g.lineTo(LANE_CENTER, 320);
-    g.stroke();
-    g.restore();
+    // The well each spinner hangs in. The blade itself is drawn every frame
+    // instead, because it turns: painted into the cached layer, the one part of
+    // the table whose whole point is that it moves was the only part that never
+    // did.
+    for (const sp of table.spinners) {
+      g.save();
+      g.translate(sp.center.x, sp.center.y);
+      const well = g.createLinearGradient(0, -sp.h / 2, 0, sp.h / 2);
+      well.addColorStop(0, withAlpha(this.theme.voidTop, 0.9));
+      well.addColorStop(1, withAlpha(this.theme.playfieldTop, 0.75));
+      g.fillStyle = well;
+      g.fillRect(-sp.w / 2, -sp.h / 2, sp.w, sp.h);
+      g.strokeStyle = withAlpha(this.theme.primary, 0.55);
+      g.lineWidth = 2;
+      g.strokeRect(-sp.w / 2, -sp.h / 2, sp.w, sp.h);
+      // Posts the blade hangs between.
+      g.fillStyle = this.theme.railMid;
+      g.fillRect(-sp.w / 2 - 1, -sp.h / 2 - 1, 3, sp.h + 2);
+      g.fillRect(sp.w / 2 - 2, -sp.h / 2 - 1, 3, sp.h + 2);
+      g.restore();
+    }
 
     // Slingshot bodies: solid plastics with a lit edge.
     for (const s of table.slingshots) {
@@ -300,22 +303,40 @@ export class Renderer {
       g.lineTo(s.c.x, s.c.y);
       g.closePath();
       const grad = g.createLinearGradient(s.a.x, s.a.y, s.c.x, s.c.y);
-      grad.addColorStop(0, '#232f4e');
-      grad.addColorStop(1, '#131b30');
+      grad.addColorStop(0, this.theme.slingTop);
+      grad.addColorStop(1, this.theme.slingBottom);
       g.fillStyle = grad;
       g.fill();
-      g.strokeStyle = 'rgba(140, 170, 220, 0.45)';
+      g.strokeStyle = withAlpha(this.theme.railMid, 0.45);
       g.lineWidth = 2;
       g.stroke();
+    }
+  }
+
+  /** Resolve a decal's theme role to the colour it is painted in. */
+  private decalColor(role: DecalColor): string {
+    switch (role) {
+      case 'primary':
+        return this.theme.primary;
+      case 'secondary':
+        return this.theme.secondary;
+      case 'highlight':
+        return this.theme.highlight;
+      case 'success':
+        return this.theme.success;
+      case 'feature':
+        return this.theme.feature;
+      case 'print':
+        return this.theme.print;
     }
   }
 
   private paintWalls(g: CanvasRenderingContext2D, table: Table): void {
     // Structural rails first, then a bright inner line so they read as metal.
     for (const pass of [
-      { width: 11, style: PALETTE.railDark },
-      { width: 7, style: PALETTE.railMid },
-      { width: 2.5, style: PALETTE.railLight },
+      { width: 11, style: this.theme.railDark },
+      { width: 7, style: this.theme.railMid },
+      { width: 2.5, style: this.theme.railLight },
     ]) {
       g.strokeStyle = pass.style;
       g.lineWidth = pass.width;
@@ -346,14 +367,14 @@ export class Renderer {
       g.moveTo(c.a.x, c.a.y + 2);
       g.lineTo(c.b.x, c.b.y + 2);
       g.stroke();
-      g.strokeStyle = PALETTE.amber;
+      g.strokeStyle = this.theme.highlight;
       g.lineWidth = 3.5;
       g.beginPath();
       g.moveTo(c.a.x, c.a.y);
       g.lineTo(c.b.x, c.b.y);
       g.stroke();
       // Hinge pips, so it reads as a gate rather than a wall.
-      g.fillStyle = PALETTE.railLight;
+      g.fillStyle = this.theme.railLight;
       for (const end of [c.a, c.b]) {
         g.beginPath();
         g.arc(end.x, end.y, 3, 0, Math.PI * 2);
@@ -368,8 +389,8 @@ export class Renderer {
     g.translate(s.center.x, s.center.y);
 
     const collar = g.createRadialGradient(0, 0, s.radius - 12, 0, 0, s.radius + 12);
-    collar.addColorStop(0, 'rgba(166, 123, 255, 0.45)');
-    collar.addColorStop(1, 'rgba(166, 123, 255, 0)');
+    collar.addColorStop(0, withAlpha(this.theme.feature, 0.45));
+    collar.addColorStop(1, withAlpha(this.theme.feature, 0));
     g.fillStyle = collar;
     g.beginPath();
     g.arc(0, 0, s.radius + 12, 0, Math.PI * 2);
@@ -377,8 +398,8 @@ export class Renderer {
 
     const hole = g.createRadialGradient(0, -4, 2, 0, 0, s.radius - 2);
     hole.addColorStop(0, '#000000');
-    hole.addColorStop(0.7, '#05070f');
-    hole.addColorStop(1, '#121a30');
+    hole.addColorStop(0.7, this.theme.holeMid);
+    hole.addColorStop(1, this.theme.holeRim);
     g.fillStyle = hole;
     g.beginPath();
     g.arc(0, 0, s.radius - 3, 0, Math.PI * 2);
@@ -387,17 +408,17 @@ export class Renderer {
     // The cup wall, open at the bottom where the ball enters.
     g.beginPath();
     g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
-    g.strokeStyle = PALETTE.railMid;
+    g.strokeStyle = this.theme.railMid;
     g.lineWidth = 7;
     g.lineCap = 'round';
     g.stroke();
     g.beginPath();
     g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
-    g.strokeStyle = PALETTE.railLight;
+    g.strokeStyle = this.theme.railLight;
     g.lineWidth = 2;
     g.stroke();
 
-    g.fillStyle = PALETTE.violet;
+    g.fillStyle = this.theme.feature;
     g.font = '700 11px ui-monospace, Menlo, monospace';
     g.textAlign = 'center';
     g.fillText('MISSION', 0, s.radius + 20);
@@ -408,7 +429,7 @@ export class Renderer {
     for (const p of table.posts) {
       g.beginPath();
       g.arc(p.center.x, p.center.y, p.radius + 4, 0, Math.PI * 2);
-      g.strokeStyle = 'rgba(255, 90, 216, 0.55)';
+      g.strokeStyle = withAlpha(this.theme.secondary, 0.55);
       g.lineWidth = 4;
       g.stroke();
       const grad = g.createRadialGradient(
@@ -419,8 +440,8 @@ export class Renderer {
         p.center.y,
         p.radius,
       );
-      grad.addColorStop(0, PALETTE.railLight);
-      grad.addColorStop(1, PALETTE.railDark);
+      grad.addColorStop(0, this.theme.railLight);
+      grad.addColorStop(1, this.theme.railDark);
       g.fillStyle = grad;
       g.beginPath();
       g.arc(p.center.x, p.center.y, p.radius, 0, Math.PI * 2);
@@ -444,8 +465,8 @@ export class Renderer {
     ctx.scale(this.dpr, this.dpr);
 
     const bg = ctx.createLinearGradient(0, 0, 0, this.height);
-    bg.addColorStop(0, PALETTE.voidTop);
-    bg.addColorStop(1, PALETTE.voidBottom);
+    bg.addColorStop(0, this.theme.voidTop);
+    bg.addColorStop(1, this.theme.voidBottom);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, this.width, this.height);
 
@@ -517,8 +538,8 @@ export class Renderer {
 
       const cx = b.x + b.w / 2;
       const cy = b.y + b.h / 2;
-      ctx.strokeStyle = audible ? PALETTE.cyan : PALETTE.textDim;
-      ctx.fillStyle = audible ? PALETTE.cyan : PALETTE.textDim;
+      ctx.strokeStyle = audible ? this.theme.primary : this.theme.textDim;
+      ctx.fillStyle = audible ? this.theme.primary : this.theme.textDim;
       ctx.lineWidth = 1.8;
       ctx.lineCap = 'round';
 
@@ -576,14 +597,14 @@ export class Renderer {
       const pulse = 0.55 + Math.sin(time * 5) * 0.35;
       ctx.save();
       ctx.globalAlpha = pulse;
-      ctx.strokeStyle = PALETTE.cyan;
+      ctx.strokeStyle = this.theme.primary;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(s.center.x, s.center.y, s.radius + 9, 0, Math.PI * 2);
       ctx.stroke();
-      this.glow(ctx, s.center.x, s.center.y, s.radius + 30, PALETTE.cyan, 0.4 * pulse);
+      this.glow(ctx, s.center.x, s.center.y, s.radius + 30, this.theme.primary, 0.4 * pulse);
       ctx.globalAlpha = Math.min(1, pulse + 0.2);
-      ctx.fillStyle = PALETTE.cyan;
+      ctx.fillStyle = this.theme.primary;
       ctx.font = '700 11px ui-monospace, Menlo, monospace';
       ctx.textAlign = 'center';
       ctx.fillText('MULTIBALL', s.center.x, s.center.y - s.radius - 14);
@@ -597,7 +618,7 @@ export class Renderer {
       const current = i === game.missionsCompleted && game.activeMission >= 0;
       if (!done && !current) continue;
       ctx.save();
-      const color = done ? PALETTE.violet : PALETTE.amber;
+      const color = done ? this.theme.feature : this.theme.highlight;
       ctx.fillStyle = color;
       ctx.globalAlpha = done ? 0.95 : 0.5 + Math.sin(game.missionTimer * 6) * 0.3;
       ctx.beginPath();
@@ -619,9 +640,9 @@ export class Renderer {
       ctx.ellipse(0, 0, 16, 9, 0, 0, Math.PI * 2);
       const pulse = 0.5 + Math.sin(game.skillShotTimer * 9) * 0.5;
       ctx.fillStyle = skill
-        ? PALETTE.cyan
+        ? this.theme.primary
         : collected
-          ? PALETTE.amber
+          ? this.theme.highlight
           : 'rgba(255, 190, 90, 0.28)';
       ctx.globalAlpha = skill ? 0.4 + pulse * 0.6 : collected ? 1 : 1;
       ctx.fill();
@@ -629,9 +650,9 @@ export class Renderer {
       ctx.lineWidth = 1.4;
       ctx.globalAlpha = 1;
       ctx.stroke();
-      if (skill) this.glow(ctx, 0, 0, 40, PALETTE.cyan, 0.35 + pulse * 0.4);
+      if (skill) this.glow(ctx, 0, 0, 40, this.theme.primary, 0.35 + pulse * 0.4);
       else if (collected || flash > 0) {
-        this.glow(ctx, 0, 0, 30 * Math.max(flash, 0.5), PALETTE.amber, 0.4);
+        this.glow(ctx, 0, 0, 30 * Math.max(flash, 0.5), this.theme.highlight, 0.4);
       }
       ctx.restore();
     }
@@ -641,7 +662,7 @@ export class Renderer {
       ctx.save();
       ctx.translate(MIRROR - 43, 856);
       const pulse = 0.6 + Math.sin(time * 6) * 0.4;
-      ctx.fillStyle = PALETTE.green;
+      ctx.fillStyle = this.theme.success;
       ctx.globalAlpha = pulse;
       ctx.beginPath();
       ctx.moveTo(0, -12);
@@ -650,7 +671,7 @@ export class Renderer {
       ctx.lineTo(-9, 6);
       ctx.closePath();
       ctx.fill();
-      this.glow(ctx, 0, 0, 34, PALETTE.green, pulse * 0.5);
+      this.glow(ctx, 0, 0, 34, this.theme.success, pulse * 0.5);
       ctx.restore();
     }
   }
@@ -668,11 +689,11 @@ export class Renderer {
         ctx.stroke();
         continue;
       }
-      this.drawTargetFace(ctx, t.a, t.b, PALETTE.magenta, lit);
+      this.drawTargetFace(ctx, t.a, t.b, this.theme.secondary, lit);
     }
     for (const t of game.table.standupTargets) {
       const lit = game.lamps.get(t.id) ?? 0;
-      this.drawTargetFace(ctx, t.a, t.b, PALETTE.green, lit);
+      this.drawTargetFace(ctx, t.a, t.b, this.theme.success, lit);
     }
   }
 
@@ -727,14 +748,14 @@ export class Renderer {
       ctx.arc(0, 0, r + 7, 0, Math.PI * 2);
       ctx.fillStyle = 'rgba(12, 20, 40, 0.85)';
       ctx.fill();
-      ctx.strokeStyle = PALETTE.railMid;
+      ctx.strokeStyle = this.theme.railMid;
       ctx.lineWidth = 2;
       ctx.stroke();
 
       // Cap.
       const cap = ctx.createRadialGradient(-r * 0.3, -r * 0.35, 2, 0, 0, r);
       cap.addColorStop(0, lit > 0 ? '#ffffff' : '#7ad9f2');
-      cap.addColorStop(0.5, PALETTE.cyan);
+      cap.addColorStop(0.5, this.theme.primary);
       cap.addColorStop(1, '#0d4f6e');
       ctx.beginPath();
       ctx.arc(0, 0, r, 0, Math.PI * 2);
@@ -751,7 +772,7 @@ export class Renderer {
       ctx.stroke();
       ctx.setLineDash([]);
 
-      if (lit > 0) this.glow(ctx, 0, 0, r * 2.4 * lit, PALETTE.cyan, lit * 0.7);
+      if (lit > 0) this.glow(ctx, 0, 0, r * 2.4 * lit, this.theme.primary, lit * 0.7);
       ctx.restore();
     }
   }
@@ -761,7 +782,7 @@ export class Renderer {
       const lit = game.lamps.get(s.id) ?? 0;
       if (lit <= 0) continue;
       ctx.save();
-      ctx.strokeStyle = PALETTE.amber;
+      ctx.strokeStyle = this.theme.highlight;
       ctx.globalAlpha = lit;
       ctx.lineWidth = 6;
       ctx.lineCap = 'round';
@@ -774,7 +795,7 @@ export class Renderer {
         (s.a.x + s.c.x) / 2,
         (s.a.y + s.c.y) / 2,
         46 * lit,
-        PALETTE.amber,
+        this.theme.highlight,
         lit * 0.6,
       );
       ctx.restore();
@@ -795,7 +816,7 @@ export class Renderer {
       ctx.stroke();
 
       const grad = ctx.createLinearGradient(f.pivot.x, f.pivot.y, tip.x, tip.y);
-      const hot = game.tilted ? PALETTE.railDark : PALETTE.magenta;
+      const hot = game.tilted ? this.theme.railDark : this.theme.secondary;
       grad.addColorStop(0, hot);
       grad.addColorStop(1, '#5a1f52');
       ctx.strokeStyle = grad;
@@ -814,7 +835,7 @@ export class Renderer {
       ctx.stroke();
 
       // Pivot boss.
-      ctx.fillStyle = PALETTE.railLight;
+      ctx.fillStyle = this.theme.railLight;
       ctx.beginPath();
       ctx.arc(f.pivot.x, f.pivot.y, 5, 0, Math.PI * 2);
       ctx.fill();
@@ -826,14 +847,14 @@ export class Renderer {
     // The tip sits just under the ball wherever the pull has taken it.
     const topY = game.table.plunger.y + game.plungerPower * PLUNGER_TRAVEL + BALL_RADIUS + 2;
     ctx.save();
-    ctx.strokeStyle = PALETTE.railMid;
+    ctx.strokeStyle = this.theme.railMid;
     ctx.lineWidth = 9;
     ctx.lineCap = 'round';
     ctx.beginPath();
     ctx.moveTo(LANE_CENTER, topY);
     ctx.lineTo(LANE_CENTER, LANE_FLOOR + 8);
     ctx.stroke();
-    ctx.fillStyle = game.plungerPower > 0 ? PALETTE.amber : PALETTE.railLight;
+    ctx.fillStyle = game.plungerPower > 0 ? this.theme.highlight : this.theme.railLight;
     ctx.beginPath();
     ctx.ellipse(LANE_CENTER, topY, 15, 7, 0, 0, Math.PI * 2);
     ctx.fill();
@@ -841,7 +862,7 @@ export class Renderer {
     // Power gauge beside the lane.
     if (game.plungerPower > 0) {
       const h = 120 * game.plungerPower;
-      ctx.fillStyle = PALETTE.amber;
+      ctx.fillStyle = this.theme.highlight;
       ctx.globalAlpha = 0.85;
       ctx.fillRect(LANE_RIGHT - 8, LANE_FLOOR - 40 - h, 4, h);
     }
@@ -863,14 +884,18 @@ export class Renderer {
    */
   private drawRamp(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     const { rampPath, warpPath, warpFork, warpForkIndex } = game.table;
-    if (rampPath.length < 2) return;
+    if (!rampPath || rampPath.length < 2) return;
+    // A machine can have a rail without a diverter, in which case there is one
+    // branch to draw and no blade.
+    const forked =
+      warpPath !== undefined && warpFork !== undefined && warpForkIndex !== undefined;
 
     // Ease the blade towards where the rules have it, rather than snapping. A
     // diverter that teleports between branches reads as a drawing error; one
     // that swings reads as a mechanism.
     const dt = clamp(time - this.diverterTime, 0, 0.1);
     this.diverterTime = time;
-    const target = game.warpLit ? 1 : 0;
+    const target = forked && game.warpLit ? 1 : 0;
     this.diverter += (target - this.diverter) * (1 - Math.pow(0.0002, dt));
 
     ctx.save();
@@ -880,7 +905,11 @@ export class Renderer {
     // Shadows for both branches first, so neither lands on top of the other's
     // surface and darkens it.
     this.railShadow(ctx, rampPath);
-    this.railShadow(ctx, warpPath.slice(Math.max(0, warpForkIndex - 1)));
+    const forkTail =
+      forked && warpPath && warpForkIndex !== undefined
+        ? warpPath.slice(Math.max(0, warpForkIndex - 1))
+        : [];
+    if (forkTail.length) this.railShadow(ctx, forkTail);
 
     // The long way round: open plastic, the ramp that has always been there.
     this.railSurface(ctx, rampPath, {
@@ -899,11 +928,9 @@ export class Renderer {
     // it above the rim also gives the ball a visible drop out of the tube,
     // which is what the shot actually does.
     const saucer = game.table.saucer;
-    const fork = warpPath
-      .slice(Math.max(0, warpForkIndex - 1))
-      .filter(
-        (p) => Math.hypot(p.x - saucer.center.x, p.y - saucer.center.y) > saucer.radius + 10,
-      );
+    const fork = forkTail.filter(
+      (p) => Math.hypot(p.x - saucer.center.x, p.y - saucer.center.y) > saucer.radius + 10,
+    );
     ctx.save();
     // A closed diverter leaves this branch dead, so it sits back as structure
     // until the gate is thrown.
@@ -926,7 +953,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.ellipse(0, 0, 4, 12, 0, 0, Math.PI * 2);
       ctx.fill();
-      ctx.strokeStyle = PALETTE.violet;
+      ctx.strokeStyle = this.theme.feature;
       ctx.lineWidth = 1.6;
       ctx.stroke();
       ctx.restore();
@@ -936,10 +963,12 @@ export class Renderer {
     // A chase of light down whichever branch is live, so the armed state is
     // visible from the flippers without reading the display.
     if (this.diverter > 0.05) {
-      this.railChase(ctx, fork, time, PALETTE.violet, this.diverter);
+      this.railChase(ctx, fork, time, this.theme.feature, this.diverter);
     }
 
-    this.drawDiverter(ctx, warpFork, rampPath, warpPath, warpForkIndex);
+    if (forked && warpFork && warpPath && warpForkIndex !== undefined) {
+      this.drawDiverter(ctx, warpFork, rampPath, warpPath, warpForkIndex);
+    }
 
     // Entry mouth and exit flare, so both ends read as openings.
     const entry = rampPath[0];
@@ -947,10 +976,10 @@ export class Renderer {
       // Violet either way, matching the arrow printed on the playfield under
       // it. Arming is carried by the pulse and the legend, not by a change of
       // colour that would leave the mouth and the arrow disagreeing.
-      const armed = this.diverter > 0.5;
+      const armed = forked && this.diverter > 0.5;
       const pulse = armed ? 0.5 + Math.sin(time * 7) * 0.3 : 0.45;
-      this.glow(ctx, entry.x, entry.y, armed ? 44 : 36, PALETTE.violet, pulse);
-      ctx.strokeStyle = PALETTE.violet;
+      this.glow(ctx, entry.x, entry.y, armed ? 44 : 36, this.theme.feature, pulse);
+      ctx.strokeStyle = this.theme.feature;
       ctx.lineWidth = 3;
       ctx.beginPath();
       ctx.arc(entry.x, entry.y, 16, 0, Math.PI * 2);
@@ -958,7 +987,7 @@ export class Renderer {
       if (armed) {
         ctx.save();
         ctx.globalAlpha = Math.min(1, pulse + 0.35);
-        ctx.fillStyle = PALETTE.violet;
+        ctx.fillStyle = this.theme.feature;
         ctx.font = '700 11px ui-monospace, Menlo, monospace';
         ctx.textAlign = 'center';
         ctx.fillText('WARP', entry.x, entry.y + 40);
@@ -1126,13 +1155,13 @@ export class Renderer {
     ctx.save();
     ctx.translate(fork.x, fork.y);
     // Pivot post.
-    ctx.fillStyle = PALETTE.railDark;
+    ctx.fillStyle = this.theme.railDark;
     ctx.beginPath();
     ctx.arc(0, 0, 6, 0, Math.PI * 2);
     ctx.fill();
     ctx.rotate(angle);
     const lit = this.diverter > 0.5;
-    ctx.fillStyle = lit ? PALETTE.violet : PALETTE.railLight;
+    ctx.fillStyle = lit ? this.theme.feature : this.theme.railLight;
     ctx.strokeStyle = 'rgba(10, 14, 28, 0.9)';
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -1144,7 +1173,7 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-    if (lit) this.glow(ctx, fork.x, fork.y, 26, PALETTE.violet, 0.35 * this.diverter);
+    if (lit) this.glow(ctx, fork.x, fork.y, 26, this.theme.feature, 0.35 * this.diverter);
   }
 
   /**
@@ -1155,9 +1184,27 @@ export class Renderer {
    * next to projecting a real one.
    */
   private drawSpinner(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
-    const { x, y } = SPINNER_AT;
-    const armed = game.warpLit;
-    const progress = game.spinsToWarp / SPINS_TO_ARM_WARP;
+    for (const [i, spec] of game.table.spinners.entries()) {
+      this.drawSpinnerBlade(ctx, game, time, i, spec);
+    }
+  }
+
+  private drawSpinnerBlade(
+    ctx: CanvasRenderingContext2D,
+    game: Game,
+    time: number,
+    index: number,
+    spec: SpinnerSpec,
+  ): void {
+    const { x, y } = spec.center;
+    // Only a machine with a diverter has anything for the spinner to arm, so
+    // on the rest the blade is just a blade and there are no pips under it.
+    const arms = game.table.warpFork !== undefined;
+    const armed = arms && game.warpLit;
+    const progress = arms ? game.spinsToWarp / SPINS_TO_ARM_WARP : 0;
+    const angle = game.spinnerAngle[index] ?? 0;
+    const rate = game.spinnerRate[index] ?? 0;
+    const half1 = spec.h / 2;
 
     ctx.save();
     ctx.translate(x, y);
@@ -1168,10 +1215,14 @@ export class Renderer {
       0,
       1,
     );
-    const color = armed ? PALETTE.violet : heat > 0.35 ? PALETTE.amber : PALETTE.cyan;
+    const color = armed
+      ? this.theme.feature
+      : heat > 0.35
+        ? this.theme.highlight
+        : this.theme.primary;
 
-    const face = Math.cos(game.spinnerAngle);
-    const half = Math.abs(face) * 15 + 1.5;
+    const face = Math.cos(angle);
+    const half = Math.abs(face) * (spec.w / 2 - 7) + 1.5;
     // Edge-on the vane is a bright line; face-on it is a lit plate.
     const grad = ctx.createLinearGradient(-half, 0, half, 0);
     grad.addColorStop(0, 'rgba(20, 30, 52, 0.95)');
@@ -1181,23 +1232,25 @@ export class Renderer {
     );
     grad.addColorStop(1, 'rgba(20, 30, 52, 0.95)');
     ctx.fillStyle = grad;
-    ctx.fillRect(-half, -13, half * 2, 26);
+    ctx.fillRect(-half, -half1 + 3, half * 2, spec.h - 6);
     ctx.strokeStyle = color;
     ctx.lineWidth = 1.4;
-    ctx.strokeRect(-half, -13, half * 2, 26);
+    ctx.strokeRect(-half, -half1 + 3, half * 2, spec.h - 6);
 
     // Spindle.
-    ctx.strokeStyle = 'rgba(226, 238, 255, 0.8)';
+    ctx.strokeStyle = withAlpha(this.theme.railLight, 0.8);
     ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, -15);
-    ctx.lineTo(0, 15);
+    ctx.moveTo(0, -half1 - 1);
+    ctx.lineTo(0, half1 + 1);
     ctx.stroke();
 
-    if (Math.abs(game.spinnerRate) > 1) {
-      this.glow(ctx, 0, 0, 30, color, clamp(Math.abs(game.spinnerRate) / 34, 0.15, 0.6));
+    if (Math.abs(rate) > 1) {
+      this.glow(ctx, 0, 0, 30, color, clamp(Math.abs(rate) / 34, 0.15, 0.6));
     }
     ctx.restore();
+
+    if (!arms) return;
 
     // Arming pips beneath the spinner, one per banked pass. They sit in the
     // lane the ball has just come up, which is where the player is looking.
@@ -1206,9 +1259,9 @@ export class Renderer {
       const px = x - 18 + (i * 36) / (SPINS_TO_ARM_WARP - 1);
       const filled = armed || i < Math.round(progress * SPINS_TO_ARM_WARP);
       ctx.beginPath();
-      ctx.arc(px, y + 24, 2.6, 0, Math.PI * 2);
+      ctx.arc(px, y + half1 + 8, 2.6, 0, Math.PI * 2);
       if (filled) {
-        ctx.fillStyle = armed ? PALETTE.violet : PALETTE.cyan;
+        ctx.fillStyle = armed ? this.theme.feature : this.theme.primary;
         ctx.globalAlpha = armed ? 0.6 + Math.sin(time * 6 - i * 0.5) * 0.4 : 0.9;
         ctx.fill();
       } else {
@@ -1227,10 +1280,8 @@ export class Renderer {
       if ((entry.mode === 'rail') !== onRail) continue;
       let p = entry.ball.pos;
       if (entry.mode === 'rail') {
-        p = pointAlong(
-          entry.railPath === 'warp' ? game.table.warpPath : game.table.rampPath,
-          entry.railT,
-        );
+        const path = entry.railPath === 'warp' ? game.table.warpPath : game.table.rampPath;
+        if (path) p = pointAlong(path, entry.railT);
       }
       const speed = Math.hypot(entry.ball.vel.x, entry.ball.vel.y);
 
@@ -1264,9 +1315,9 @@ export class Renderer {
         p.y,
         BALL_RADIUS,
       );
-      grad.addColorStop(0, PALETTE.ballLight);
-      grad.addColorStop(0.45, PALETTE.ballMid);
-      grad.addColorStop(1, PALETTE.ballDark);
+      grad.addColorStop(0, this.theme.ballLight);
+      grad.addColorStop(0.45, this.theme.ballMid);
+      grad.addColorStop(1, this.theme.ballDark);
       ctx.beginPath();
       ctx.arc(p.x, p.y, BALL_RADIUS, 0, Math.PI * 2);
       ctx.fillStyle = grad;
@@ -1335,50 +1386,50 @@ export class Renderer {
 
       let y = hud.y + 22;
       const x = hud.x + 18;
-      ctx.fillStyle = PALETTE.cyan;
+      ctx.fillStyle = this.theme.primary;
       ctx.font = mono(14, 700);
       ctx.fillText('LOOPBACK PINBALL', x, y);
       y += 34;
 
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = mono(11);
       ctx.fillText('SCORE', x, y);
       y += 16;
-      ctx.fillStyle = PALETTE.text;
+      ctx.fillStyle = this.theme.text;
       ctx.font = mono(30, 700);
       ctx.fillText(game.score.toLocaleString(), x, y);
       y += 42;
 
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = mono(11);
       ctx.fillText('HIGH', x, y);
       y += 16;
-      ctx.fillStyle = PALETTE.text;
+      ctx.fillStyle = this.theme.text;
       ctx.font = mono(16);
       ctx.fillText(game.highScore.toLocaleString(), x, y);
       y += 30;
 
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = mono(11);
       ctx.fillText(`BALL ${game.ballNumber}`, x, y);
       for (let i = 0; i < 5; i += 1) {
         ctx.beginPath();
         ctx.arc(x + 82 + i * 15, y + 5, 4.5, 0, Math.PI * 2);
-        ctx.fillStyle = i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+        ctx.fillStyle = i < game.ballsRemaining ? this.theme.success : 'rgba(255,255,255,0.14)';
         ctx.fill();
       }
       y += 34;
 
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = mono(11);
       ctx.fillText('RANK', x, y);
       y += 16;
-      ctx.fillStyle = PALETTE.amber;
+      ctx.fillStyle = this.theme.highlight;
       ctx.font = mono(18, 700);
       ctx.fillText(game.rank.toUpperCase(), x, y);
       y += 34;
 
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = mono(11);
       ctx.fillText(`BONUS x${game.bonusMultiplier}`, x, y);
       ctx.fillText(`UNITS ${game.bonusUnits}`, x + 130, y);
@@ -1416,12 +1467,12 @@ export class Renderer {
     const { x, y, w, h } = hud;
 
     const panel = ctx.createLinearGradient(x, y, x, y + h);
-    panel.addColorStop(0, 'rgba(18, 30, 62, 0.92)');
-    panel.addColorStop(1, 'rgba(8, 13, 30, 0.92)');
+    panel.addColorStop(0, withAlpha(this.theme.playfieldTop, 0.92));
+    panel.addColorStop(1, withAlpha(this.theme.playfieldBottom, 0.92));
     ctx.fillStyle = panel;
     roundRect(ctx, x, y, w, h, 14);
     ctx.fill();
-    ctx.strokeStyle = 'rgba(90, 130, 200, 0.35)';
+    ctx.strokeStyle = withAlpha(this.theme.railMid, 0.35);
     ctx.lineWidth = 1;
     ctx.stroke();
 
@@ -1431,8 +1482,8 @@ export class Renderer {
     roundRect(ctx, x, y, w, h, 14);
     ctx.clip();
     const glow = ctx.createRadialGradient(x + w / 2, y, 4, x + w / 2, y, w * 0.7);
-    glow.addColorStop(0, 'rgba(60, 224, 255, 0.22)');
-    glow.addColorStop(1, 'rgba(60, 224, 255, 0)');
+    glow.addColorStop(0, withAlpha(this.theme.primary, 0.22));
+    glow.addColorStop(1, withAlpha(this.theme.primary, 0));
     ctx.fillStyle = glow;
     ctx.fillRect(x, y, w, h);
     ctx.restore();
@@ -1442,11 +1493,11 @@ export class Renderer {
     let cursor = y + pad;
 
     ctx.textAlign = 'left';
-    ctx.fillStyle = PALETTE.cyan;
+    ctx.fillStyle = this.theme.primary;
     ctx.font = mono(compact ? 11 : 13, 700);
     ctx.fillText('LOOPBACK PINBALL', x + pad, cursor);
     ctx.textAlign = 'right';
-    ctx.fillStyle = PALETTE.amber;
+    ctx.fillStyle = this.theme.highlight;
     ctx.font = mono(compact ? 11 : 13, 700);
     // The audio buttons live in this corner, so the rank keeps clear of them.
     ctx.fillText(game.rank.toUpperCase(), x + w - pad - AUDIO_BUTTON_SPAN, cursor);
@@ -1454,7 +1505,7 @@ export class Renderer {
 
     // Score, sized to the space available.
     ctx.textAlign = 'left';
-    ctx.fillStyle = PALETTE.text;
+    ctx.fillStyle = this.theme.text;
     const scoreSize = Math.min(w / 8.5, compact ? 30 : 44);
     ctx.font = mono(scoreSize, 700);
     ctx.fillText(game.score.toLocaleString(), x + pad, cursor);
@@ -1462,7 +1513,7 @@ export class Renderer {
 
     // Ball indicator lamps, one per ball left.
     ctx.textAlign = 'right';
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = mono(11);
     ctx.fillText(
       `HIGH ${game.highScore.toLocaleString()}`,
@@ -1471,18 +1522,18 @@ export class Renderer {
     );
     ctx.textAlign = 'left';
 
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = mono(11);
     ctx.fillText('BALL', x + pad, cursor);
     for (let i = 0; i < 5; i += 1) {
       const cx = x + pad + 48 + i * 15;
       ctx.beginPath();
       ctx.arc(cx, cursor + 5, 4.5, 0, Math.PI * 2);
-      ctx.fillStyle = i < game.ballsRemaining ? PALETTE.green : 'rgba(255,255,255,0.14)';
+      ctx.fillStyle = i < game.ballsRemaining ? this.theme.success : 'rgba(255,255,255,0.14)';
       ctx.fill();
     }
     ctx.textAlign = 'right';
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.fillText(
       `BONUS x${game.bonusMultiplier}   UNITS ${game.bonusUnits}`,
       x + w - pad,
@@ -1506,17 +1557,17 @@ export class Renderer {
     mono: (size: number, weight?: number) => string,
   ): number {
     if (game.activeMission < 0) return y;
-    const spec = MISSIONS[game.activeMission];
+    const spec = game.machine.missions[game.activeMission];
     if (!spec) return y;
-    ctx.fillStyle = PALETTE.violet;
+    ctx.fillStyle = this.theme.feature;
     ctx.font = mono(13, 700);
     ctx.fillText(spec.name.toUpperCase(), x, y);
     const barY = y + 20;
     ctx.fillStyle = 'rgba(255,255,255,0.12)';
     ctx.fillRect(x, barY, w, 6);
-    ctx.fillStyle = PALETTE.violet;
+    ctx.fillStyle = this.theme.feature;
     ctx.fillRect(x, barY, w * missionFraction(game, spec.target), 6);
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = mono(11);
     ctx.fillText(`${Math.ceil(game.missionTimer)}s  ${spec.brief}`, x, barY + 12);
     return barY + 32;
@@ -1530,22 +1581,22 @@ export class Renderer {
     y: number,
     mono: (size: number, weight?: number) => string,
   ): void {
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = mono(11);
     ctx.fillText('MISSIONS', x, y);
-    MISSIONS.forEach((spec, i) => {
+    game.machine.missions.forEach((spec, i) => {
       const row = y + 20 + i * 22;
       const done = i < game.missionsCompleted;
       const running = i === game.activeMission;
       ctx.beginPath();
       ctx.arc(x + 5, row + 5, 5, 0, Math.PI * 2);
       ctx.fillStyle = done
-        ? PALETTE.violet
+        ? this.theme.feature
         : running
-          ? PALETTE.amber
+          ? this.theme.highlight
           : 'rgba(255,255,255,0.14)';
       ctx.fill();
-      ctx.fillStyle = done || running ? PALETTE.text : PALETTE.textDim;
+      ctx.fillStyle = done || running ? this.theme.text : this.theme.textDim;
       ctx.font = mono(12, done || running ? 700 : 500);
       ctx.fillText(spec.name, x + 18, row);
     });
@@ -1567,27 +1618,30 @@ export class Renderer {
   ): number {
     const chips: { text: string; color: string }[] = [];
     if (game.ballSaveTimer > 0) {
-      chips.push({ text: `SAVE ${Math.ceil(game.ballSaveTimer)}s`, color: PALETTE.green });
+      chips.push({ text: `SAVE ${Math.ceil(game.ballSaveTimer)}s`, color: this.theme.success });
     }
     if (game.comboCount >= 2) {
-      chips.push({ text: `COMBO ${game.comboCount}x`, color: PALETTE.amber });
+      chips.push({ text: `COMBO ${game.comboCount}x`, color: this.theme.highlight });
     }
     if (game.frenzyTimer > 0) {
-      chips.push({ text: `FRENZY ${Math.ceil(game.frenzyTimer)}s`, color: PALETTE.magenta });
+      chips.push({
+        text: `FRENZY ${Math.ceil(game.frenzyTimer)}s`,
+        color: this.theme.secondary,
+      });
     }
     if (game.multiballActive) {
       chips.push({
         text: `JACKPOT ${Math.round(game.jackpotValue / 1000)}K`,
-        color: PALETTE.cyan,
+        color: this.theme.primary,
       });
     } else if (game.multiballLit) {
-      chips.push({ text: 'MULTIBALL READY', color: PALETTE.cyan });
+      chips.push({ text: 'MULTIBALL READY', color: this.theme.primary });
     }
     if (game.kickbackLit) {
-      chips.push({ text: 'KICKBACK', color: PALETTE.green });
+      chips.push({ text: 'KICKBACK', color: this.theme.success });
     }
     if (game.skillShotTimer > 0) {
-      chips.push({ text: 'SKILL LANE', color: PALETTE.cyan });
+      chips.push({ text: 'SKILL LANE', color: this.theme.primary });
     }
     if (chips.length === 0) return y;
 
@@ -1624,7 +1678,7 @@ export class Renderer {
     y: number,
     mono: (size: number, weight?: number) => string,
   ): void {
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = mono(11);
     const lines = [
       'Z / ←      left flipper',
@@ -1646,14 +1700,14 @@ export class Renderer {
     ctx.save();
     ctx.textAlign = 'center';
     ctx.globalAlpha = Math.min(1, banner.life * 2);
-    ctx.fillStyle = PALETTE.text;
-    ctx.shadowColor = PALETTE.cyan;
+    ctx.fillStyle = this.theme.text;
+    ctx.shadowColor = this.theme.primary;
     ctx.shadowBlur = 18;
     ctx.font = `700 ${Math.round(30 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText(banner.text.toUpperCase(), cx, cy + Math.sin(time * 6) * 2);
     if (banner.sub) {
       ctx.shadowBlur = 8;
-      ctx.fillStyle = PALETTE.textDim;
+      ctx.fillStyle = this.theme.textDim;
       ctx.font = `500 ${Math.round(15 * scale)}px ui-monospace, Menlo, monospace`;
       ctx.fillText(banner.sub, cx, cy + 34 * scale);
     }
@@ -1687,8 +1741,8 @@ export class Renderer {
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
-    ctx.fillStyle = PALETTE.cyan;
-    ctx.shadowColor = PALETTE.cyan;
+    ctx.fillStyle = this.theme.primary;
+    ctx.shadowColor = this.theme.primary;
     ctx.shadowBlur = 22;
     ctx.font = `700 ${Math.round(40 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText('LOOPBACK', cx, cy - 82 * scale);
@@ -1696,12 +1750,12 @@ export class Renderer {
     ctx.shadowBlur = 0;
 
     if (game.phase === 'gameOver') {
-      ctx.fillStyle = PALETTE.amber;
+      ctx.fillStyle = this.theme.highlight;
       ctx.font = `700 ${Math.round(20 * scale)}px ui-monospace, Menlo, monospace`;
       ctx.fillText(`FINAL ${game.score.toLocaleString()}`, cx, cy + 4 * scale);
     }
 
-    ctx.fillStyle = PALETTE.text;
+    ctx.fillStyle = this.theme.text;
     ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.4;
     ctx.font = `600 ${Math.round(18 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText('TAP OR PRESS ENTER', cx, cy + 44 * scale);
@@ -1712,7 +1766,7 @@ export class Renderer {
       cursor = this.drawScoreboard(ctx, game, cx, cursor, scale);
     }
 
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.textAlign = 'center';
     ctx.font = `500 ${Math.round(13 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText('Tap left / right to flip', cx, cursor);
@@ -1741,7 +1795,7 @@ export class Renderer {
     let cursor = y;
 
     ctx.textAlign = 'center';
-    ctx.fillStyle = PALETTE.textDim;
+    ctx.fillStyle = this.theme.textDim;
     ctx.font = `600 ${Math.round(11 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText('THIS BROWSER', cx, cursor);
     cursor += 16 * scale;
@@ -1760,7 +1814,7 @@ export class Renderer {
       // without having to remember what the board looked like before.
       const fresh = game.phase === 'gameOver' && i === game.scoreboardPosition;
       ctx.font = rowFont;
-      ctx.fillStyle = fresh ? PALETTE.amber : PALETTE.text;
+      ctx.fillStyle = fresh ? this.theme.highlight : this.theme.text;
       ctx.globalAlpha = fresh ? 1 : 0.85;
 
       ctx.textAlign = 'left';
@@ -1768,7 +1822,7 @@ export class Renderer {
       ctx.fillText(entry.score.toLocaleString(), left + 20 * scale, cursor);
 
       ctx.textAlign = 'right';
-      ctx.fillStyle = fresh ? PALETTE.amber : PALETTE.textDim;
+      ctx.fillStyle = fresh ? this.theme.highlight : this.theme.textDim;
       ctx.font = `500 ${Math.round(11 * scale)}px ui-monospace, Menlo, monospace`;
       const detail = [entry.rank, entry.date].filter(Boolean).join('  ');
       if (detail) ctx.fillText(detail, right, cursor);

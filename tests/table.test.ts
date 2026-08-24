@@ -5,6 +5,7 @@ import { overlap } from '../src/engine/shapes.js';
 import type { Collider } from '../src/engine/shapes.js';
 import type { Vec2 } from '../src/engine/vec2.js';
 import { vec } from '../src/engine/vec2.js';
+import { DEFAULT_MACHINE } from '../src/game/machines/index.js';
 import {
   BALL_RADIUS,
   DOME_CENTER,
@@ -15,7 +16,6 @@ import {
   PLAY_CENTER,
   PLAY_RIGHT,
   TABLE_H,
-  buildTable,
 } from '../src/game/table.js';
 
 /** Deterministic PRNG, so a failure is always reproducible. */
@@ -48,7 +48,7 @@ function isPlayable(colliders: readonly Collider[], p: Vec2): boolean {
 
 describe('table geometry', () => {
   it('builds without degenerate colliders', () => {
-    const table = buildTable();
+    const table = DEFAULT_MACHINE.buildTable();
     expect(table.colliders.length).toBeGreaterThan(20);
     for (const c of table.colliders) {
       if (c.kind === 'segment') {
@@ -61,7 +61,7 @@ describe('table geometry', () => {
   });
 
   it('never lets a ball leave the table, from anywhere at any speed', () => {
-    const table = buildTable();
+    const table = DEFAULT_MACHINE.buildTable();
     const random = rng(20260823);
     const escapes: string[] = [];
 
@@ -127,7 +127,7 @@ describe('table geometry', () => {
   });
 
   it('sends a launched ball out of the shooter lane and into play', () => {
-    const table = buildTable();
+    const table = DEFAULT_MACHINE.buildTable();
     const world = new World(DEFAULT_WORLD);
     world.statics = table.colliders;
     world.movers = table.flippers;
@@ -151,7 +151,7 @@ describe('table geometry', () => {
 
 describe('the drain', () => {
   it('leaves a gap between the flippers the ball can actually fall through', () => {
-    const table = buildTable();
+    const table = DEFAULT_MACHINE.buildTable();
     const left = table.leftFlipper;
     const right = table.rightFlipper;
 
@@ -174,7 +174,7 @@ describe('the drain', () => {
   });
 
   it('drains a ball rolling down the middle, wherever in the gap it enters', () => {
-    const table = buildTable();
+    const table = DEFAULT_MACHINE.buildTable();
     const centre = (table.leftFlipper.tip.x + table.rightFlipper.tip.x) / 2;
 
     for (let offset = -10; offset <= 10; offset += 5) {

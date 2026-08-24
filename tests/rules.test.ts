@@ -4,13 +4,18 @@ import type { Intents } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
 import {
   BALLS_PER_GAME,
-  MISSIONS,
   MISSIONS_FOR_MULTIBALL,
-  RANKS,
   SCORE_SKILL_SHOT,
   TILT_LIMIT,
 } from '../src/game/rules.js';
 import { BALL_RADIUS, LANE_CENTER, LANE_FLOOR } from '../src/game/table.js';
+import { DEFAULT_MACHINE } from '../src/game/machines/index.js';
+
+// The rule engine is shared by every machine, so these run against one of
+// them. What varies per machine is the layout and the ladder, and those have
+// suites of their own.
+const MISSIONS = DEFAULT_MACHINE.missions;
+const RANKS = DEFAULT_MACHINE.ranks;
 
 /** Run the game forward at a steady 60 frames per second. */
 function run(game: Game, seconds: number, intents: Intents = noIntents()): void {
