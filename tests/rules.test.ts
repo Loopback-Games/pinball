@@ -2,7 +2,14 @@ import { describe, expect, it } from 'vitest';
 import { Game, noIntents } from '../src/game/game.js';
 import type { Intents } from '../src/game/game.js';
 import { vec } from '../src/engine/vec2.js';
-import { BALLS_PER_GAME, TILT_LIMIT } from '../src/game/rules.js';
+import {
+  BALLS_PER_GAME,
+  MISSIONS,
+  MISSIONS_FOR_MULTIBALL,
+  RANKS,
+  SCORE_SKILL_SHOT,
+  TILT_LIMIT,
+} from '../src/game/rules.js';
 import { BALL_RADIUS, LANE_CENTER, LANE_FLOOR } from '../src/game/table.js';
 
 /** Run the game forward at a steady 60 frames per second. */
@@ -190,5 +197,92 @@ describe('the shooter lane', () => {
     }
     const moved = game.balls[0]?.ball.pos.y ?? 320;
     expect(moved).not.toBe(320);
+  });
+});
+
+describe('the rank ladder', () => {
+  /** Drop the live ball into the saucer, then let the game react. */
+  function shootSaucer(game: Game): void {
+    const entry = game.balls.find((e) => e.mode === 'play') ?? game.balls[0];
+    if (!entry) throw new Error('the game has no ball to place');
+    entry.mode = 'play';
+    entry.ball.active = true;
+    entry.ball.pos = vec(240, 392);
+    entry.ball.vel = vec(0, 0);
+    entry.ball.idleTime = 0;
+  }
+
+  it('runs all the way to the top rank', () => {
+    // Multiball used to be gated on "two or more missions completed", which is
+    // true forever once it is true. Every saucer shot after the second mission
+    // restarted multiball instead of starting the next mission, so three of
+    // the five missions and the top three ranks were unreachable: the game
+    // stopped dead at Lieutenant however well it was played.
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    for (let shot = 0; shot < 40 && game.missionsCompleted < MISSIONS.length; shot += 1) {
+      shootSaucer(game);
+      run(game, 2.2);
+    }
+    expect(game.missionsCompleted).toBeGreaterThanOrEqual(MISSIONS.length);
+    expect(game.rank).toBe(RANKS[RANKS.length - 1]);
+  });
+
+  it('lights multiball, spends it, and carries on with the campaign', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    let litAt = -1;
+    let startedAt = -1;
+    for (let shot = 0; shot < 40; shot += 1) {
+      shootSaucer(game);
+      run(game, 2.2);
+      if (litAt < 0 && game.multiballLit) litAt = shot;
+      if (startedAt < 0 && game.multiballActive) startedAt = shot;
+    }
+    expect(litAt).toBeGreaterThanOrEqual(0);
+    // Lit first, then collected at the saucer rather than starting itself.
+    expect(startedAt).toBeGreaterThan(litAt);
+    // And the campaign kept going past the rank that lit it.
+    expect(game.missionsCompleted).toBeGreaterThan(MISSIONS_FOR_MULTIBALL);
+  });
+});
+
+describe('the skill shot', () => {
+  /** Send a ball through one rollover lane at speed. */
+  function throughLane(game: Game, index: number): void {
+    const lane = game.table.rollovers[index];
+    if (!lane) throw new Error(`no rollover lane ${index}`);
+    placeBall(game, lane.x, lane.y - 40, 0, 600);
+    run(game, 0.15);
+  }
+
+  it('pays only when the ball takes the lane that is lit', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.skillShotTimer = 10;
+    const before = game.score;
+    throughLane(game, game.skillLane);
+    expect(game.score - before).toBeGreaterThan(SCORE_SKILL_SHOT);
+  });
+
+  it('is lost on the first wrong lane rather than collected later', () => {
+    // A full launch runs the orbit and sweeps all three lanes, so paying out
+    // for the lit lane whenever it was crossed inside the window handed over
+    // the skill shot on every ball and left lane change with nothing to
+    // decide. The first lane the ball takes settles it either way.
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    game.skillShotTimer = 10;
+    const wrong = (game.skillLane + 1) % game.table.rollovers.length;
+    throughLane(game, wrong);
+    expect(game.skillShotTimer).toBe(0);
+
+    const after = game.score;
+    throughLane(game, game.skillLane);
+    expect(game.score - after).toBeLessThan(SCORE_SKILL_SHOT);
   });
 });

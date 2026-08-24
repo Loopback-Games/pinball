@@ -132,7 +132,12 @@ const MAX_BALLS = 3;
  * pockets between a target and a guide, where it can rattle indefinitely.
  */
 const CONFINED_RADIUS = 70;
-const CONFINED_SECONDS = 9;
+/**
+ * Long enough that a slow but legitimate rattle is left alone, short enough
+ * that the player is not watching a dead table. It used to be nine, which was
+ * cover for the notches in the geometry that have since been taken out.
+ */
+const CONFINED_SECONDS = 6;
 
 export class Game {
   readonly table: Table;
@@ -161,6 +166,16 @@ export class Game {
   missionTimer = 0;
 
   multiballActive = false;
+  /**
+   * Multiball is waiting at the saucer.
+   *
+   * Kept apart from `missionsCompleted`, which is what gated it before. That
+   * read "two or more missions done" and stayed true forever, so every saucer
+   * shot after the second mission started multiball again and the shot that
+   * begins a mission was never reachable a third time. Three of the five
+   * missions and half the rank ladder were unreachable content.
+   */
+  multiballLit = false;
 
   /* --- dynamic scoring ------------------------------------------- */
 
@@ -279,6 +294,7 @@ export class Game {
     this.missionsCompleted = 0;
     this.extraBallAwarded = false;
     this.multiballActive = false;
+    this.multiballLit = false;
     this.bonusMultiplier = 1;
     this.resetTableState();
     for (const e of this.entries) {
@@ -368,12 +384,15 @@ export class Game {
     this.updateNudge(step, intents);
 
     const active = this.entries.filter((e) => e.ball.active).map((e) => e.ball);
+    // Where each ball started the frame, so the sensors can be tested against
+    // the whole span it travelled rather than just where it ended up.
+    const before = active.map((b) => b.pos);
     const collisions = this.world.step(step, active, (h) => {
       for (const f of this.table.flippers) f.step(h);
     });
     for (const c of collisions) this.onCollision(c);
 
-    for (const hit of this.sensorField.update(active)) {
+    for (const hit of this.sensorField.update(active, before)) {
       this.onSensor(hit.id, hit.ball);
     }
 
@@ -699,12 +718,20 @@ export class Game {
       this.onSound('rollover', 0.5);
       this.bonusUnits += 1;
 
-      // The skill shot: the flashing lane, taken soon after launch.
-      if (this.skillShotTimer > 0 && index === this.skillLane) {
+      // The skill shot is settled by the first lane the ball takes after the
+      // launch, win or lose. Paying out whenever the lit lane was crossed at
+      // any point in the window made it free money: a full launch runs the
+      // orbit and sweeps all three lanes, so the shot collected itself every
+      // ball and lane change had nothing to decide.
+      if (this.skillShotTimer > 0) {
         this.skillShotTimer = 0;
-        this.award(SCORE_SKILL_SHOT, ball.pos, 'complete');
-        this.onSound('skillShot', 1);
-        this.setBanner('Skill shot', `+${SCORE_SKILL_SHOT.toLocaleString()}`, 3);
+        if (index === this.skillLane) {
+          this.award(SCORE_SKILL_SHOT, ball.pos, 'complete');
+          this.onSound('skillShot', 1);
+          this.setBanner('Skill shot', `+${SCORE_SKILL_SHOT.toLocaleString()}`, 3);
+        } else {
+          this.setBanner('Skill shot missed', 'Change lanes on the plunge', 2);
+        }
       }
 
       this.litLanes.add(index);
@@ -763,18 +790,19 @@ export class Game {
       this.jackpotValue = JACKPOT_BASE;
       return;
     }
+    // A lit multiball takes the saucer ahead of anything else. It has to: the
+    // missions chain, so there is nearly always one running, and behind the
+    // mission check the light could be on for the rest of the game without the
+    // shot it names ever doing what it says.
+    if (this.multiballLit && !this.multiballActive && this.ballsInPlay === 1) {
+      this.multiballLit = false;
+      this.startMultiball();
+      return;
+    }
     if (this.activeMission >= 0) {
       // Landing in the saucer mid-mission banks a step of progress.
       this.advanceMission(1);
       this.award(SCORE.saucerBase, this.table.saucer.center, 'saucer');
-      return;
-    }
-    if (
-      this.missionsCompleted >= MISSIONS_FOR_MULTIBALL &&
-      !this.multiballActive &&
-      this.ballsInPlay === 1
-    ) {
-      this.startMultiball();
       return;
     }
     this.award(SCORE.saucerBase, this.table.saucer.center, 'saucer');
@@ -797,12 +825,16 @@ export class Game {
     this.onSound('complete', 1);
     this.setBanner(`${spec.name} complete`, `Promoted to ${this.rank}`, 4);
 
-    // Reaching the rank that lights multiball starts it there and then.
-    if (this.missionsCompleted >= MISSIONS_FOR_MULTIBALL && !this.multiballActive) {
-      if (this.ballsInPlay === 1) {
-        this.startMultiball();
-        return;
-      }
+    // Every few ranks lights multiball at the saucer. Lighting it rather than
+    // starting it here keeps the campaign moving: the player chooses when to
+    // cash it in, and the mission that follows still gets its turn.
+    if (
+      !this.multiballActive &&
+      !this.multiballLit &&
+      this.missionsCompleted % MISSIONS_FOR_MULTIBALL === 0
+    ) {
+      this.multiballLit = true;
+      this.setBanner('Multiball lit', 'Shoot the saucer', 3);
     }
 
     // The campaign chains: finishing one mission starts the next straight

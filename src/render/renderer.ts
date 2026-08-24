@@ -571,6 +571,28 @@ export class Renderer {
     game: Game,
     time: number,
   ): void {
+    // A lit multiball waits at the saucer until the player goes and gets it,
+    // so the saucer has to say so for as long as it is waiting. The banner
+    // that announces it is gone in three seconds.
+    if (game.multiballLit && !game.multiballActive) {
+      const s = game.table.saucer;
+      const pulse = 0.55 + Math.sin(time * 5) * 0.35;
+      ctx.save();
+      ctx.globalAlpha = pulse;
+      ctx.strokeStyle = PALETTE.cyan;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.arc(s.center.x, s.center.y, s.radius + 9, 0, Math.PI * 2);
+      ctx.stroke();
+      this.glow(ctx, s.center.x, s.center.y, s.radius + 30, PALETTE.cyan, 0.4 * pulse);
+      ctx.globalAlpha = Math.min(1, pulse + 0.2);
+      ctx.fillStyle = PALETTE.cyan;
+      ctx.font = '700 11px ui-monospace, Menlo, monospace';
+      ctx.textAlign = 'center';
+      ctx.fillText('MULTIBALL', s.center.x, s.center.y - s.radius - 14);
+      ctx.restore();
+    }
+
     // Mission lamps: one lights per rank earned, so progress is visible on the
     // playfield rather than only in the score panel.
     for (const [i, p] of game.table.missionLamps.entries()) {
@@ -1280,6 +1302,8 @@ export class Renderer {
     }
     if (game.multiballActive) {
       chips.push({ text: `JACKPOT ${Math.round(game.jackpotValue / 1000)}K`, color: PALETTE.cyan });
+    } else if (game.multiballLit) {
+      chips.push({ text: 'MULTIBALL READY', color: PALETTE.cyan });
     }
     if (game.kickbackLit) {
       chips.push({ text: 'KICKBACK', color: PALETTE.green });
