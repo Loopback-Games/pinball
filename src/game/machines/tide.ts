@@ -5,6 +5,7 @@ import { TIDE_ART } from '../../render/art/tide.js';
 import { TIDE_THEME } from '../../render/theme.js';
 import type { Machine } from '../machine.js';
 import type { MissionSpec } from '../rules.js';
+import { TIDE_SOUND } from '../sound.js';
 import { sensorCircle, sensorRect } from '../sensors.js';
 import type { BumperSpec, Decal, Table } from '../table.js';
 import {
@@ -210,6 +211,7 @@ export const TIDEWRECK: Machine = {
   tagline: 'No posts, bumpers in a row, room to move.',
   theme: TIDE_THEME,
   art: TIDE_ART,
+  sound: TIDE_SOUND,
   // Water. The ball falls slowly and the water takes the speed back out of
   // it, so shots hang and there is time to watch one develop — which is what
   // the open playfield with no posts is for.

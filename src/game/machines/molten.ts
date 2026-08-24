@@ -5,6 +5,7 @@ import { MOLTEN_ART } from '../../render/art/molten.js';
 import { MOLTEN_THEME } from '../../render/theme.js';
 import type { Machine } from '../machine.js';
 import type { MissionSpec } from '../rules.js';
+import { MOLTEN_SOUND } from '../sound.js';
 import { sensorCircle, sensorRect } from '../sensors.js';
 import type { BumperSpec, Decal, Table } from '../table.js';
 import {
@@ -207,6 +208,7 @@ export const MOLTEN_CORE: Machine = {
   tagline: 'No rail. Four bumpers, eight targets.',
   theme: MOLTEN_THEME,
   art: MOLTEN_ART,
+  sound: MOLTEN_SOUND,
   // Heavy and lively: the ball falls harder and keeps more of what it has, so
   // the packed bumper diamond rattles rather than absorbs, and a shot that
   // gets away from you is gone before you can think about it.

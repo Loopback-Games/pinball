@@ -2,6 +2,7 @@ import type { WorldConfig } from '../engine/physics.js';
 import type { ArtSpec } from '../render/art.js';
 import type { Theme } from '../render/theme.js';
 import type { MissionSpec } from './rules.js';
+import type { SoundPalette } from './sound.js';
 import type { Table } from './table.js';
 
 /**
@@ -27,6 +28,12 @@ export interface Machine {
    * exists to fix; a required field makes forgetting it a compile error.
    */
   art: ArtSpec;
+  /**
+   * How the machine sounds: its key, its waveforms and how bright and long
+   * anything rings. Required for the same reason `art` is — a machine that
+   * forgot to say would silently sound like a different one.
+   */
+  sound: SoundPalette;
   /**
    * How the ball behaves on this machine, over the defaults.
    *

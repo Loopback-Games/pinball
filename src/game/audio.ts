@@ -1,4 +1,6 @@
 import type { SoundName } from './game.js';
+import type { SoundPalette } from './sound.js';
+import { ORBIT_SOUND } from './sound.js';
 
 /**
  * How urgent the music should feel. The game sets this; the sequencer decides
@@ -72,19 +74,9 @@ const MOODS: Record<MusicMood, MoodSettings> = {
   },
 };
 
-/**
- * Four bars of A minor, as semitone offsets from A. The triads give the pad
- * and arpeggio something to sit on and the roots drive the bass.
- */
-const PROGRESSION: readonly (readonly number[])[] = [
-  [0, 3, 7], // Am
-  [-4, 0, 3], // F
-  [3, 7, 10], // C
-  [-2, 2, 5], // G
-];
-
 const STEPS_PER_BAR = 16;
-const BARS = PROGRESSION.length;
+/** Every palette's progression is four bars, so the clock is the same length. */
+const BARS = 4;
 const TOTAL_STEPS = STEPS_PER_BAR * BARS;
 
 /** Seconds of notes to keep queued ahead of the clock. */
@@ -112,6 +104,8 @@ export class Audio {
   private failed = false;
 
   private mood: MusicMood = 'attract';
+  /** The sound of the machine being played. */
+  private palette: SoundPalette = ORBIT_SOUND;
   private resumeTicks = 0;
   private step = 0;
   private nextStepTime = 0;
@@ -198,6 +192,16 @@ export class Audio {
   }
 
   /**
+   * Change which machine this is the sound of.
+   *
+   * The step clock is deliberately left running: restarting it on a swap would
+   * cut a bar in half, and every palette is the same four bars long.
+   */
+  setPalette(palette: SoundPalette): void {
+    this.palette = palette;
+  }
+
+  /**
    * Queue any music that falls due in the next fraction of a second.
    *
    * Notes are scheduled against the audio clock rather than fired from the
@@ -223,7 +227,7 @@ export class Audio {
       return;
     }
     const settings = MOODS[this.mood];
-    const stepDuration = 60 / settings.bpm / 4;
+    const stepDuration = 60 / (settings.bpm * this.palette.tempo) / 4;
 
     // A long stall (a backgrounded tab) must not queue hundreds of notes.
     if (this.nextStepTime < ctx.currentTime - 1) {
@@ -237,27 +241,30 @@ export class Audio {
   }
 
   private scheduleStep(step: number, at: number, s: MoodSettings): void {
+    const p = this.palette;
     const bar = Math.floor(step / STEPS_PER_BAR) % BARS;
     const inBar = step % STEPS_PER_BAR;
-    const chord = PROGRESSION[bar] ?? PROGRESSION[0]!;
+    const chord = p.progression[bar] ?? p.progression[0] ?? [0, 3, 7];
     const root = chord[0] ?? 0;
     const gain = s.level;
+    /** A note of this machine's, in this machine's key. */
+    const note = (n: number): number => semitone(n + p.transpose);
 
     if (s.pad && inBar === 0) {
       // A sustained chord, filtered so it breathes rather than drones.
-      for (const note of chord) {
-        this.musicTone(at, 'sawtooth', semitone(note), 1.9, 0.05 * gain, 900);
-        this.musicTone(at, 'sawtooth', semitone(note) * 1.004, 1.9, 0.04 * gain, 700);
+      for (const n of chord) {
+        this.musicTone(at, p.padWave, note(n), 1.9, 0.05 * gain, 900);
+        this.musicTone(at, p.padWave, note(n) * 1.004, 1.9, 0.04 * gain, 700);
       }
     }
     if (s.bass && inBar % 4 === 0) {
       const accent = inBar === 0 ? 1 : 0.7;
-      this.musicTone(at, 'sawtooth', semitone(root - 12), 0.34, 0.16 * gain * accent, 320);
+      this.musicTone(at, p.bassWave, note(root - 12), 0.34, 0.16 * gain * accent, 320);
     }
     if (s.arp && inBar % 2 === 0) {
-      const note = chord[(inBar / 2) % chord.length] ?? root;
+      const pick = chord[(inBar / 2) % chord.length] ?? root;
       const octave = inBar % 8 === 0 ? 12 : 0;
-      this.musicTone(at, 'triangle', semitone(note + 12 + octave), 0.2, 0.09 * gain, 3200);
+      this.musicTone(at, p.arpWave, note(pick + 12 + octave), 0.2, 0.09 * gain, 3200);
     }
     if (s.kick && (inBar === 0 || inBar === 8 || (s.snare && inBar === 6))) {
       this.kick(at, 0.5 * gain);
@@ -305,8 +312,9 @@ export class Audio {
     osc.type = type;
     osc.frequency.setValueAtTime(freq, at);
     filter.type = 'lowpass';
-    filter.frequency.setValueAtTime(cutoff, at);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(200, cutoff * 0.45), at + dur);
+    const open = Math.max(120, cutoff * this.palette.brightness);
+    filter.frequency.setValueAtTime(open, at);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(120, open * 0.45), at + dur);
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), at + Math.min(0.06, dur * 0.2));
     g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
@@ -456,14 +464,17 @@ export class Audio {
     const osc = ctx.createOscillator();
     const g = ctx.createGain();
     osc.type = type;
+    // Every effect on the table funnels through here, so the machine's ring
+    // is applied once rather than restated in twenty-five places.
+    const held = dur * this.palette.sustain;
     osc.frequency.setValueAtTime(from, at);
-    osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + dur);
+    osc.frequency.exponentialRampToValueAtTime(Math.max(20, to), at + held);
     g.gain.setValueAtTime(0.0001, at);
     g.gain.exponentialRampToValueAtTime(Math.max(0.0002, gain), at + 0.008);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + held);
     osc.connect(g).connect(bus);
     osc.start(at);
-    osc.stop(at + dur + 0.02);
+    osc.stop(at + held + 0.02);
   }
 
   private chord(at: number, freqs: number[], dur: number, gain: number): void {
@@ -484,15 +495,17 @@ export class Audio {
     src.buffer = this.noiseBuffer;
     const filter = ctx.createBiquadFilter();
     filter.type = 'bandpass';
-    filter.frequency.setValueAtTime(filterFrom, at);
-    filter.frequency.exponentialRampToValueAtTime(Math.max(40, filterTo), at + dur);
+    const bright = this.palette.brightness;
+    const held = dur * this.palette.sustain;
+    filter.frequency.setValueAtTime(Math.max(40, filterFrom * bright), at);
+    filter.frequency.exponentialRampToValueAtTime(Math.max(40, filterTo * bright), at + held);
     filter.Q.value = 0.9;
     const g = ctx.createGain();
     g.gain.setValueAtTime(gain, at);
-    g.gain.exponentialRampToValueAtTime(0.0001, at + dur);
+    g.gain.exponentialRampToValueAtTime(0.0001, at + held);
     src.connect(filter).connect(g).connect(bus);
     src.start(at);
-    src.stop(at + dur + 0.02);
+    src.stop(at + held + 0.02);
   }
 }
 

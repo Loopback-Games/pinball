@@ -31,9 +31,14 @@ exactly as it should.
 
 ## The machines
 
-Three tables, one rulebook. Each has its own playfield, its own palette and its
-own rank ladder, and each keeps its own scoreboard — a score is only meaningful
-against the layout it was set on.
+Three tables, one rulebook. Each has its own playfield, its own art, its own
+physics, its own sound and its own rank ladder, and each keeps its own
+scoreboard — a score is only meaningful against the layout it was set on.
+
+They do not just look different. The ball falls at a different rate on each and
+keeps a different amount of what it has, so a machine feels unlike its
+neighbours before you have read a word of its rules. Each has one thing the
+others do not.
 
 They share a chassis: the cabinet, the shooter lane, the apron and the whole
 lower third. That part of a real pinball table is near-universal, and it is
@@ -44,10 +49,11 @@ chooses is everything above the flippers.
 
 ### Orbit Cadet
 
-Deep space, in cyan and violet. Three pop bumpers under the dome, a three-bank
-of drop targets on the left, five standup targets, a spinner in the left orbit
-lane, a mission saucer, and one long habitrail that returns the ball to the
-left inlane.
+Deep space, in cyan and violet: a starfield, a nebula behind the bumpers, lit
+neon tubing, and planets wearing orbital rings. Three pop bumpers under the
+dome, a three-bank of drop targets on the left, five standup targets, a spinner
+in the left orbit lane, a mission saucer, and one long habitrail that returns
+the ball to the left inlane.
 
 The ramp forks. A diverter at its apex is normally closed, sending the ball the
 long way round to the inlane; thrown, it drops the ball out of a short tube
@@ -57,20 +63,48 @@ table rather than off the display.
 
 ### Molten Core
 
-A forge, in ember orange and raw steel. It is the table with no habitrail at
-all: nothing to ride and nothing to wait for. The playfield is spent on metal
-instead — four pop bumpers packed into a diamond that rattles a ball rather
-than passing it, an ore bank on the right, and five standups on the left.
-Handedness flips here: everything Orbit Cadet puts on one side, this puts on
-the other.
+A forge, lit from below. The glow is at the drain end rather than behind the
+dome, the basalt is cracked and the cracks run hotter the further down the
+table they are, the rails are dull riveted iron, and the bumpers are vents with
+fire in them that breathe on their own. Embers rise. The saucer is a pool of
+melt with crust floating on it.
+
+It is the table with no habitrail at all: nothing to ride and nothing to wait
+for. The playfield is spent on metal instead — four pop bumpers packed into a
+diamond that rattles a ball rather than passing it, an ore bank on the right,
+and five standups on the left. Handedness flips here: everything Orbit Cadet
+puts on one side, this puts on the other.
+
+The ball falls harder here and keeps more of what it has, so the nest rattles
+rather than absorbs and a shot that gets away is gone before you can think.
+
+**Eruption.** Strike all four bumpers within six seconds and the crucible
+vents: everything doubles, every lamp lights, and the saucer spits the ball
+back out at nearly twice the speed instead of placing it. The window rolls, so
+each hit buys more time — sweeping a packed nest is the hard part, and a fixed
+window would turn the fourth bumper into a lottery.
 
 ### Tidewreck
 
-A drowned ship, in teal and coral. The open table of the three: it carries no
-posts at all, and its bumpers are strung in a row across the top of the dome so
-they deflect a ball onward instead of holding it. The cargo bank lies flat
-across the upper left where Orbit Cadet's stands on the diagonal, and the
-habitrail takes a lower, wider line over the top.
+A drowned ship, lit from above through broken water. Caustic shafts fall from
+the surface and fade with depth, the rails are wire under rope and patchy
+barnacle growth, and the bumpers are anemones whose tentacles each wave on
+their own phase. Silt sinks, bubbles rise. The saucer is a hole in the hull
+with the water winding into it.
+
+The open table of the three: it carries no posts at all, and its bumpers are
+strung in a row across the top of the dome so they deflect a ball onward
+instead of holding it. The cargo bank lies flat across the upper left where
+Orbit Cadet's stands on the diagonal, and the habitrail takes a lower, wider
+line over the top.
+
+The ball falls slowly here and the water takes the speed back out of it, so
+shots hang and there is time to watch one develop.
+
+**The Current.** A band across the middle pushes the ball sideways and turns
+about every four seconds, so the open playfield is periodically not as open as
+it looks. It steers rather than carries — the push is well under gravity — and
+it is always drawn, because a current you cannot see is a table that cheats.
 
 ### What they all share
 

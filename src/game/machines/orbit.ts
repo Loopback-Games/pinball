@@ -3,6 +3,7 @@ import type { Vec2 } from '../../engine/vec2.js';
 import { vec } from '../../engine/vec2.js';
 import type { Machine } from '../machine.js';
 import type { MissionSpec } from '../rules.js';
+import { ORBIT_SOUND } from '../sound.js';
 import { ORBIT_ART } from '../../render/art/orbit.js';
 import { ORBIT_THEME } from '../../render/theme.js';
 import { sensorCircle, sensorRect } from '../sensors.js';
@@ -289,6 +290,7 @@ export const ORBIT_CADET: Machine = {
   tagline: 'One long rail, and a warp that forks it.',
   theme: ORBIT_THEME,
   art: ORBIT_ART,
+  sound: ORBIT_SOUND,
   ranks: ['Cadet', 'Ensign', 'Lieutenant', 'Commander', 'Captain', 'Admiral'],
   missions: MISSIONS,
   buildTable: buildOrbitTable,

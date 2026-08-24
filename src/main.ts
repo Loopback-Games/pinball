@@ -47,6 +47,7 @@ const audio = new Audio();
 
 function wire(g: Game): void {
   g.onSound = (name, intensity) => audio.play(name, intensity);
+  audio.setPalette(g.machine.sound);
 }
 wire(game);
 
