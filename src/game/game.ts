@@ -1,5 +1,7 @@
 import type { Ball, Collision } from '../engine/physics.js';
 import { createBall, World, DEFAULT_WORLD } from '../engine/physics.js';
+import type { Random } from '../engine/random.js';
+import { mulberry32 } from '../engine/random.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp, distance, lerp, vec } from '../engine/vec2.js';
 import type { MusicMood } from './audio.js';
@@ -144,6 +146,11 @@ const CONFINED_SECONDS = 6;
 export class Game {
   readonly table: Table;
   readonly world: World;
+  /**
+   * Every random choice the table makes comes from here, never from
+   * `Math.random()`, so a game is a pure function of its seed and its inputs.
+   */
+  private readonly random: Random;
   private readonly entries: BallEntry[] = [];
   private readonly sensorField: SensorField;
 
@@ -241,7 +248,8 @@ export class Game {
 
   onSound: (name: SoundName, intensity: number) => void = () => {};
 
-  constructor() {
+  constructor(seed = 0x5eed) {
+    this.random = mulberry32(seed);
     this.table = buildTable();
     this.world = new World(DEFAULT_WORLD);
     this.world.statics = this.table.colliders;
@@ -991,7 +999,7 @@ export class Game {
       if (e.confinedTime > CONFINED_SECONDS && !this.cradled(p)) {
         // Throw it back up the table rather than nudging it, so it leaves the
         // pocket it is caught in instead of settling straight back into it.
-        e.ball.vel = vec((Math.random() - 0.5) * 900, -1400);
+        e.ball.vel = vec((this.random() - 0.5) * 900, -1400);
         e.confinedTime = 0;
         e.anchor = p;
         e.ball.idleTime = 0;
@@ -1014,7 +1022,7 @@ export class Game {
       // A ball held still on a raised flipper is a cradle, which is a skill,
       // not a fault. Only shove balls that nothing is deliberately holding.
       if (e.ball.idleTime > 6 && !this.cradled(p)) {
-        e.ball.vel = vec((Math.random() - 0.5) * 600, -500);
+        e.ball.vel = vec((this.random() - 0.5) * 600, -500);
         e.ball.idleTime = 0;
       }
       void dt;
