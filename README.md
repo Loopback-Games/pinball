@@ -44,8 +44,9 @@ Nothing on the table is worth a fixed amount for long.
 
 - **Ball save** — the first eight seconds of every ball are free. Drain inside
   them and the ball comes straight back.
-- **Skill shot** — one rollover lane flashes after each launch. Take it, with
-  lane change if you need to, for 25,000.
+- **Skill shot** — one rollover lane flashes after each launch. The first lane
+  the ball takes settles it: the right one pays 25,000, the wrong one loses it.
+  Lane change on the plunge is how you line it up.
 - **Combos** — ramp, orbit, saucer and the two target banks chain. Each link in
   the chain multiplies every shot until the chain lapses.
 - **Frenzy** — clearing the standup targets doubles everything for eighteen
@@ -57,9 +58,18 @@ Nothing on the table is worth a fixed amount for long.
 - **Multiball jackpots** — every bumper hit during multiball grows the jackpot,
   which the ramp or the saucer collects.
 
-Completing a mission promotes you a rank, from Cadet to Admiral. Two missions
-lights multiball. Clearing the drop targets or the rollover lanes raises the
-bonus multiplier, which is paid out when the ball drains.
+Completing a mission promotes you a rank, from Cadet to Admiral, and each
+mission runs straight into the next. Every second rank lights multiball at the
+saucer, where it waits until you go and collect it. Clearing the drop targets or
+the rollover lanes raises the bonus multiplier, which is paid out when the ball
+drains.
+
+## The scoreboard
+
+The best five games are kept, with the rank reached and the date, and shown on
+the attract screen. It is a local scoreboard in the strict sense: it lives in
+this browser's storage, it is never sent anywhere, and clearing site data
+clears it.
 
 ## Sound
 
@@ -117,6 +127,20 @@ invisible in a screenshot and both change the entire feel of the game.
 from each flipper across every angle and speed and asserts that every feature is
 reachable. This caught a post standing in the ramp mouth that had made the ramp
 reachable by one shot in 288 — invisible in a screenshot, obvious to the sweep.
+
+**So are the gaps between things.** The same file seeds a ball across the whole
+playfield in four directions and fails if it gets stuck. A gap a shade narrower
+than the ball is not a gap, it is a trap, and the table had three of them: a
+standup beside the foot of the ramp funnel, the slot between that funnel and the
+standup bank, and a post with twenty-six units of clearance either side against
+a twenty-seven unit ball. Each one held the ball for nine seconds while the
+stuck-ball recovery counted down.
+
+**Switches are swept, not sampled.** A ball leaves the plunger at around two
+thousand units a second. Testing where it is once a frame steps clean over a
+thirty-unit lane switch on a device running at thirty hertz, so the same shot
+scored on a desktop and not on a phone. The sensors test the whole span the ball
+travelled instead.
 
 ## Licence
 
