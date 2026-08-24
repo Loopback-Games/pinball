@@ -61,6 +61,16 @@ export class Input {
     // audio, so listen for those too rather than relying on pointerdown.
     canvas.addEventListener('click', () => this.options.onGesture());
     canvas.addEventListener('touchend', () => this.options.onGesture());
+    // A key held when the page loses focus never sends its keyup, so the
+    // flipper it was holding stays up for the rest of the game and the player
+    // has to press and release it again to get it back. Alt-tabbing mid-ball
+    // is enough to do it. The same goes for a pointer whose capture is taken
+    // away without a pointerup.
+    window.addEventListener('blur', this.releaseEverything);
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) this.releaseEverything();
+    });
+    canvas.addEventListener('lostpointercapture', this.onPointerUp);
     canvas.style.touchAction = 'none';
   }
 
@@ -151,6 +161,12 @@ export class Input {
 
   private readonly onKeyUp = (e: KeyboardEvent): void => {
     this.held.delete(e.code);
+  };
+
+  /** Let go of every key and every touch, whatever state they were left in. */
+  private readonly releaseEverything = (): void => {
+    this.held.clear();
+    this.pointers.clear();
   };
 
   private readonly onPointerDown = (e: PointerEvent): void => {

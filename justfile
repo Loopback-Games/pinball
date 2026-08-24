@@ -46,6 +46,13 @@ run:
 smoke: build
     #!/usr/bin/env bash
     set -euo pipefail
+    # A server left behind by an earlier run would be serving an older dist,
+    # and wait-on would happily report it as ready. That has already cost an
+    # afternoon of testing a build that was not the one just made.
+    if lsof -i :4173 -sTCP:LISTEN >/dev/null 2>&1; then
+        echo "port 4173 is already in use; stop whatever is on it first" >&2
+        exit 1
+    fi
     npx vite preview --port 4173 --strictPort >/dev/null 2>&1 &
     server=$!
     # Ignore a failed kill: the trap runs after the server has usually already

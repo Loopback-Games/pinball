@@ -110,6 +110,34 @@ for (const vp of VIEWPORTS) {
   await page.close();
 }
 
+// A key held when the page stops being the thing the player is looking at
+// never sends its keyup, and the flipper it was holding used to stay up for
+// the rest of the game. Alt-tabbing mid-ball was enough to do it.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 860 } });
+  page.on('pageerror', (e) => problems.push(`focus: pageerror: ${e.message}`));
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(200);
+
+  const pressed = () =>
+    page.evaluate(() => globalThis.pinball.table.flippers.map((f) => f.pressed));
+  await page.keyboard.down('KeyZ');
+  await page.waitForTimeout(250);
+  const whileHeld = await pressed();
+  await page.evaluate(() => window.dispatchEvent(new Event('blur')));
+  await page.waitForTimeout(250);
+  const afterBlur = await pressed();
+  await page.keyboard.up('KeyZ');
+  console.log(
+    `flippers held ${JSON.stringify(whileHeld)}, after focus loss ${JSON.stringify(afterBlur)}`,
+  );
+  if (!whileHeld[0]) problems.push('holding Z did not raise the left flipper');
+  if (afterBlur[0]) problems.push('the left flipper stayed up after the page lost focus');
+  await page.close();
+}
+
 // Audio has to survive the browser's autoplay policy: it may only start from a
 // real user gesture, and the game must stay playable if it never starts.
 {
