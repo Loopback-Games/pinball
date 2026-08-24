@@ -58,6 +58,10 @@ Nothing on the table is worth a fixed amount for long.
 - **Multiball jackpots** — every bumper hit during multiball grows the jackpot,
   which the ramp or the saucer collects.
 
+Missions start at the saucer, and clearing either target bank launches one too,
+once per ball. The saucer stays the faster route: no once-a-ball limit, and it
+banks a step of progress every time you hit it during a mission.
+
 Completing a mission promotes you a rank, from Cadet to Admiral, and each
 mission runs straight into the next. Every second rank lights multiball at the
 saucer, where it waits until you go and collect it. Clearing the drop targets or
@@ -88,7 +92,10 @@ separate gain buses, which is what lets either be silenced on its own.
 ```sh
 just setup     # install dependencies
 just run       # dev server with hot reload
+just fmt       # format everything
+just lint      # typecheck and check formatting
 just test      # unit tests
+just security  # audit the toolchain, twice
 just check     # everything CI runs
 just smoke     # build, then drive the real game in a browser
 ```
@@ -141,6 +148,26 @@ thousand units a second. Testing where it is once a frame steps clean over a
 thirty-unit lane switch on a device running at thirty hertz, so the same shot
 scored on a desktop and not on a phone. The sensors test the whole span the ball
 travelled instead.
+
+**A game replays exactly.** The only dice the table rolls are the shove that
+frees a wedged ball, and they used to come from `Math.random()`, which made a
+failing playtest impossible to reproduce. The simulation takes a seed now. That
+bought a suite that plays two dozen games of random flips, nudges and plunger
+pulls and asserts only what can never be false — the score never falls, nothing
+is ever NaN, no ball ever moves faster than anything on the table can throw it —
+which is how you find the states nobody thought to aim at.
+
+**Most of the rulebook used to be unreachable.** Every mission, every rank and
+the multiball behind them were gated on one shot at the saucer, which unskilled
+play found 0.06 times a ball: fifty-seven games in sixty ended without a single
+mission. Clearing a target bank now opens the same door once a ball, and a test
+plays twelve games and fails if the missions stop showing up. Balance is
+measured here, not guessed at.
+
+**The page fetches nothing.** No fonts, no analytics, no CDN, so the content
+security policy can say `default-src 'none'` and mean it, and scripts are
+restricted to the page's own origin with no inline allowance. The favicon is an
+inline SVG like everything else the game draws.
 
 ## Licence
 

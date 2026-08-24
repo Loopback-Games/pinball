@@ -61,6 +61,13 @@
         height: 100%;
         touch-action: none;
       }
+      /* The canvas is focusable so a keyboard user can find the game at all.
+         It has to say so visibly when it has focus, and only for keyboard
+         focus: a ring appearing under every thumb tap would be noise. */
+      #table:focus-visible {
+        outline: 2px solid #6fe3ff;
+        outline-offset: -3px;
+      }
       #noscript {
         position: fixed;
         inset: 0;
@@ -73,7 +80,19 @@
     </style>
   </head>
   <body>
-    <canvas id="table"></canvas>
+    <!-- Everything on screen is painted into this one canvas, so the label is
+         the only description of the game assistive technology ever gets, and
+         it has to carry the controls with it. role=application asks the screen
+         reader to pass keystrokes through to the page rather than treating
+         them as browse commands. -->
+    <canvas
+      id="table"
+      tabindex="0"
+      role="application"
+      aria-label="Loopback Pinball. Press Enter to start a game, hold Space and release to
+      launch the ball, and use Z and forward slash for the left and right flippers. Press S
+      for sound effects and M for music."
+    ></canvas>
     <noscript>
       <div id="noscript">
         <p>Loopback Pinball needs JavaScript to run.</p>
