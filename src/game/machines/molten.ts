@@ -1,6 +1,7 @@
 import { arc } from '../../engine/shapes.js';
 import type { Vec2 } from '../../engine/vec2.js';
 import { vec } from '../../engine/vec2.js';
+import { MOLTEN_ART } from '../../render/art/molten.js';
 import { MOLTEN_THEME } from '../../render/theme.js';
 import type { Machine } from '../machine.js';
 import type { MissionSpec } from '../rules.js';
@@ -200,7 +201,7 @@ export const MOLTEN_CORE: Machine = {
   name: 'Molten Core',
   tagline: 'No rail. Four bumpers, eight targets.',
   theme: MOLTEN_THEME,
-  art: {},
+  art: MOLTEN_ART,
   ranks: ['Apprentice', 'Smith', 'Founder', 'Bloomer', 'Master', 'Forgemaster'],
   missions: MISSIONS,
   buildTable: buildMoltenTable,

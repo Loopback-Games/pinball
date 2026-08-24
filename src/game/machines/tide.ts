@@ -1,6 +1,7 @@
 import { arc } from '../../engine/shapes.js';
 import type { Vec2 } from '../../engine/vec2.js';
 import { vec } from '../../engine/vec2.js';
+import { TIDE_ART } from '../../render/art/tide.js';
 import { TIDE_THEME } from '../../render/theme.js';
 import type { Machine } from '../machine.js';
 import type { MissionSpec } from '../rules.js';
@@ -193,7 +194,7 @@ export const TIDEWRECK: Machine = {
   name: 'Tidewreck',
   tagline: 'No posts, bumpers in a row, room to move.',
   theme: TIDE_THEME,
-  art: {},
+  art: TIDE_ART,
   ranks: ['Diver', 'Salvor', 'Bosun', 'Mate', 'Skipper', 'Wreckmaster'],
   missions: MISSIONS,
   buildTable: buildTideTable,
