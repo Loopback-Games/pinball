@@ -286,3 +286,79 @@ describe('the skill shot', () => {
     expect(game.score - after).toBeLessThan(SCORE_SKILL_SHOT);
   });
 });
+
+describe('a second way into the mission system', () => {
+  /**
+   * Drive the ball into every target of a bank.
+   *
+   * Target faces are one-way, and which way each one faces depends on where it
+   * sits, so the ball is fired at each from both sides of its own normal
+   * rather than from a direction guessed here.
+   */
+  function clearBank(
+    game: Game,
+    targets: readonly { a: { x: number; y: number }; b: { x: number; y: number } }[],
+  ): void {
+    for (const t of targets) {
+      const mid = { x: (t.a.x + t.b.x) / 2, y: (t.a.y + t.b.y) / 2 };
+      const dx = t.b.x - t.a.x;
+      const dy = t.b.y - t.a.y;
+      const len = Math.hypot(dx, dy) || 1;
+      const nx = -dy / len;
+      const ny = dx / len;
+      for (const side of [1, -1]) {
+        const away = BALL_RADIUS + 24;
+        placeBall(game, mid.x + nx * side * away, mid.y + ny * side * away, -nx * side * 500, -ny * side * 500);
+        run(game, 0.4);
+      }
+    }
+  }
+
+  it('launches a mission when the fuel bank is cleared', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    expect(game.activeMission).toBe(-1);
+    clearBank(game, game.table.dropTargets);
+    expect(game.activeMission).toBeGreaterThanOrEqual(0);
+  });
+
+  it('launches a mission when the standup bank is cleared', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    clearBank(game, game.table.standupTargets);
+    expect(game.activeMission).toBeGreaterThanOrEqual(0);
+  });
+
+  it('opens the door only once a ball, so the banks cannot farm missions', () => {
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    clearBank(game, game.table.dropTargets);
+    const started = game.activeMission;
+    expect(started).toBeGreaterThanOrEqual(0);
+
+    // End the mission the way the clock would, without letting the ball
+    // drain: a fresh ball is meant to open the door again.
+    game.activeMission = -1;
+    clearBank(game, game.table.dropTargets);
+    expect(game.activeMission).toBe(-1);
+  });
+
+  it('leaves the saucer as the faster route', () => {
+    // The saucer starts a mission whenever one is not running, with no
+    // once-a-ball limit, and banks a step of progress on every later hit.
+    const game = new Game();
+    game.startGame();
+    game.phase = 'playing';
+    const saucer = game.table.saucer.center;
+    placeBall(game, saucer.x, saucer.y, 0, 0);
+    run(game, 2.5);
+    expect(game.activeMission).toBeGreaterThanOrEqual(0);
+    const progress = game.missionProgress;
+    placeBall(game, saucer.x, saucer.y, 0, 0);
+    run(game, 2.5);
+    expect(game.missionProgress).toBeGreaterThan(progress);
+  });
+});

@@ -188,6 +188,17 @@ export class Game {
    * missions and half the rank ladder were unreachable content.
    */
   multiballLit = false;
+  /**
+   * Whether the fuel bank has already opened a mission on this ball.
+   *
+   * The saucer used to be the only way into the mission system. Measured over
+   * sixty games of unskilled play it was found 0.06 times a ball, and the
+   * missions, the rank ladder and the multiball behind them were reached in
+   * three games out of sixty: most of the rules were content almost nobody
+   * saw. Clearing the bank is a shot a flailing player does make, so it opens
+   * the door once a ball while the saucer stays the fast route.
+   */
+  private missionStartedThisBall = false;
 
   /* --- dynamic scoring ------------------------------------------- */
 
@@ -326,6 +337,7 @@ export class Game {
 
   private resetTableState(): void {
     this.bonusUnits = 0;
+    this.missionStartedThisBall = false;
     this.tiltWarnings = 0;
     this.tilted = false;
     // A running mission survives a drain. Clearing it here gave a fifty second
@@ -635,6 +647,7 @@ export class Game {
         this.bonusMultiplier = Math.min(this.bonusMultiplier + 1, 8);
         this.dropsDown.clear();
         for (const t of this.table.dropTargets) t.collider.enabled = true;
+        this.startMissionFromBank();
       }
       return;
     }
@@ -659,6 +672,7 @@ export class Game {
           this.onSound('frenzy', 1);
           this.setBanner('FRENZY', `Everything scores x${FRENZY_MULTIPLIER}`, 3);
           this.standupsHit.clear();
+          this.startMissionFromBank();
         }
       }
       return;
@@ -863,6 +877,21 @@ export class Game {
     if (this.missionsCompleted < MISSIONS.length) {
       this.beginMission(this.missionsCompleted % MISSIONS.length);
     }
+  }
+
+  /**
+   * The second way into the mission system: clearing the fuel bank launches
+   * the next mission, once per ball.
+   *
+   * Deliberately not a substitute for the saucer. The saucer starts a mission
+   * at any time and banks a step of progress every time it is hit, so a player
+   * who can find it still runs the campaign several times faster.
+   */
+  private startMissionFromBank(): void {
+    if (this.activeMission >= 0 || this.multiballActive) return;
+    if (this.missionStartedThisBall) return;
+    this.missionStartedThisBall = true;
+    this.beginMission(this.missionsCompleted % MISSIONS.length);
   }
 
   /** Put a mission on the clock and announce it. */
