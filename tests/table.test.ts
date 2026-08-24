@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBall, World, DEFAULT_WORLD } from '../src/engine/physics.js';
+import { createBall } from '../src/engine/physics.js';
 import type { Collision } from '../src/engine/physics.js';
 import { overlap } from '../src/engine/shapes.js';
 import type { Collider } from '../src/engine/shapes.js';
@@ -16,6 +16,7 @@ import {
   PLAY_CENTER,
   PLAY_RIGHT,
   TABLE_H,
+  createWorld,
 } from '../src/game/table.js';
 
 /** Deterministic PRNG, so a failure is always reproducible. */
@@ -67,9 +68,7 @@ for (const machine of MACHINES) {
       const escapes: string[] = [];
 
       for (let trial = 0; trial < 240; trial += 1) {
-        const world = new World(DEFAULT_WORLD);
-        world.statics = table.colliders;
-        world.movers = table.flippers;
+        const world = createWorld(table, machine.physics ?? {});
 
         // Start somewhere in the play area that a ball could actually occupy.
         // Points outside the dome are off the table, and a ball started inside a
@@ -129,9 +128,7 @@ for (const machine of MACHINES) {
 
     it('sends a launched ball out of the shooter lane and into play', () => {
       const table = machine.buildTable();
-      const world = new World(DEFAULT_WORLD);
-      world.statics = table.colliders;
-      world.movers = table.flippers;
+      const world = createWorld(table, machine.physics ?? {});
 
       const ball = createBall(vec(table.plunger.x, table.plunger.y), BALL_RADIUS);
       ball.vel = vec(0, -2600);
@@ -179,9 +176,7 @@ for (const machine of MACHINES) {
       const centre = (table.leftFlipper.tip.x + table.rightFlipper.tip.x) / 2;
 
       for (let offset = -10; offset <= 10; offset += 5) {
-        const world = new World(DEFAULT_WORLD);
-        world.statics = table.colliders;
-        world.movers = table.flippers;
+        const world = createWorld(table, machine.physics ?? {});
         const ball = createBall(vec(centre + offset, 700), BALL_RADIUS);
         ball.vel = vec(0, 400);
 

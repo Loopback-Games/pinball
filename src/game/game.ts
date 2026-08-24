@@ -1,5 +1,6 @@
 import type { Ball, Collision } from '../engine/physics.js';
-import { createBall, World, DEFAULT_WORLD } from '../engine/physics.js';
+import type { World } from '../engine/physics.js';
+import { createBall } from '../engine/physics.js';
 import type { Random } from '../engine/random.js';
 import { mulberry32 } from '../engine/random.js';
 import type { Vec2 } from '../engine/vec2.js';
@@ -19,6 +20,7 @@ import {
   LANE_RIGHT,
   PLAY_LEFT,
   TABLE_H,
+  createWorld,
 } from './table.js';
 import type { Machine } from './machine.js';
 import { rankFor } from './machine.js';
@@ -290,9 +292,7 @@ export class Game {
     this.table = machine.buildTable();
     this.spinnerAngle = this.table.spinners.map(() => 0);
     this.spinnerRate = this.table.spinners.map(() => 0);
-    this.world = new World(DEFAULT_WORLD);
-    this.world.statics = this.table.colliders;
-    this.world.movers = this.table.flippers;
+    this.world = createWorld(this.table, machine.physics ?? {});
     this.sensorField = new SensorField(this.table.sensors);
 
     for (let i = 0; i < MAX_BALLS; i += 1) {

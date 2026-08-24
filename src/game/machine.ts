@@ -1,3 +1,4 @@
+import type { WorldConfig } from '../engine/physics.js';
 import type { ArtSpec } from '../render/art.js';
 import type { Theme } from '../render/theme.js';
 import type { MissionSpec } from './rules.js';
@@ -26,6 +27,16 @@ export interface Machine {
    * exists to fix; a required field makes forgetting it a compile error.
    */
   art: ArtSpec;
+  /**
+   * How the ball behaves on this machine, over the defaults.
+   *
+   * The cheapest way to make two tables feel unlike each other: gravity sets
+   * how hard the ball falls and therefore how much a flipper can do about it,
+   * and drag sets how alive it stays. Tuning either moves every number the
+   * playability suites measure, so a machine that sets this has to be measured
+   * rather than assumed.
+   */
+  physics?: Partial<WorldConfig>;
   /** Six rungs, from the rank a new player starts at to the last one. */
   ranks: readonly string[];
   /**

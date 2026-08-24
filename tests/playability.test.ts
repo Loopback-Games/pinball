@@ -83,7 +83,11 @@ function makeBot(): (game: Game) => Intents {
       if (entry.mode !== 'play') continue;
       const { x, y } = entry.ball.pos;
       if (entry.ball.vel.y < -50 || y < 760 || y > 900) continue;
-      if (x < 278) intents.leftFlipper = true;
+      // The midpoint of the two pivots, not a fixed column: a machine may
+      // move its flippers, and a hardcoded centre line would quietly send
+      // every ball to the wrong bat.
+      const middle = (game.table.leftFlipper.pivot.x + game.table.rightFlipper.pivot.x) / 2;
+      if (x < middle) intents.leftFlipper = true;
       else intents.rightFlipper = true;
     }
     return intents;
@@ -142,8 +146,13 @@ for (const machine of MACHINES) {
     const flipperFeatures = reachableFeatures(table);
 
     for (const [label, origin] of [
-      ['the left flipper', { x: 252, y: 806 }],
-      ['the right flipper', { x: 304, y: 806 }],
+      // Derived from the bats rather than written down, so a machine that
+      // moves its flippers is still swept from where its flippers are.
+      ['the left flipper', { x: table.leftFlipper.tip.x + 7, y: table.leftFlipper.tip.y - 65 }],
+      [
+        'the right flipper',
+        { x: table.rightFlipper.tip.x - 7, y: table.rightFlipper.tip.y - 65 },
+      ],
     ] as const) {
       it(`can reach every feature from ${label}`, () => {
         const reached = sweepFrom(machine, origin);

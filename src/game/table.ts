@@ -1,4 +1,6 @@
 import { Flipper } from '../engine/flipper.js';
+import type { WorldConfig } from '../engine/physics.js';
+import { DEFAULT_WORLD, World } from '../engine/physics.js';
 import type { Collider } from '../engine/shapes.js';
 import { arc, circle, segment, segmentFlipped } from '../engine/shapes.js';
 import type { SurfaceOptions } from '../engine/shapes.js';
@@ -572,4 +574,18 @@ export function saucerWall(center: Vec2, radius: number): Collider {
     restitution: 0.12,
     friction: 0.5,
   });
+}
+
+/**
+ * Build the world a table is played in.
+ *
+ * One place, because the geometry suites used to construct a `World`
+ * themselves: the moment a machine tunes its own physics, a test that built
+ * its own world would be measuring a table nobody plays.
+ */
+export function createWorld(table: Table, config: Partial<WorldConfig> = {}): World {
+  const world = new World({ ...DEFAULT_WORLD, ...config });
+  world.statics = table.colliders;
+  world.movers = table.flippers;
+  return world;
 }
