@@ -19,6 +19,9 @@ import { MISSIONS } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { PALETTE, seeded } from './palette.js';
 
+/** Width the audio buttons occupy in the top-right corner, in CSS pixels. */
+const AUDIO_BUTTON_SPAN = 96;
+
 /** An on-screen control, in CSS pixels relative to the canvas. */
 interface Button {
   id: string;
@@ -480,6 +483,7 @@ export class Renderer {
     const size = 38;
     const gap = 8;
     const margin = 12;
+    // Keep this in step with AUDIO_BUTTON_SPAN, which reserves the room.
     this.buttons = [
       { id: 'music', x: this.width - margin - size, y: margin, w: size, h: size },
       {
@@ -1137,7 +1141,8 @@ export class Renderer {
     ctx.textAlign = 'right';
     ctx.fillStyle = PALETTE.amber;
     ctx.font = mono(compact ? 11 : 13, 700);
-    ctx.fillText(game.rank.toUpperCase(), x + w - pad, cursor);
+    // The audio buttons live in this corner, so the rank keeps clear of them.
+    ctx.fillText(game.rank.toUpperCase(), x + w - pad - AUDIO_BUTTON_SPAN, cursor);
     cursor += compact ? 18 : 22;
 
     // Score, sized to the space available.
@@ -1396,6 +1401,7 @@ export class Renderer {
     ctx.font = `500 ${Math.round(13 * scale)}px ui-monospace, Menlo, monospace`;
     ctx.fillText('Tap left / right to flip', cx, cy + 84 * scale);
     ctx.fillText('Hold to draw the plunger', cx, cy + 104 * scale);
+    ctx.fillText('Buttons top right mute sound', cx, cy + 124 * scale);
     ctx.restore();
   }
 
