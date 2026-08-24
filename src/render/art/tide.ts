@@ -142,13 +142,15 @@ export const TIDE_ART: ArtSpec = {
       g.strokeStyle = withAlpha(theme.secondary, 0.75 + lit * 0.25);
       g.lineWidth = 2.6;
       g.lineCap = 'round';
-      for (let i = 0; i < 11; i += 1) {
-        const a = (i / 11) * Math.PI * 2;
+      // The whole crown is one path with eight subpaths, not eight strokes.
+      // On a weak device the cost is in the state changes, not the curves.
+      g.beginPath();
+      for (let i = 0; i < 8; i += 1) {
+        const a = (i / 8) * Math.PI * 2;
         // Each tentacle waves on its own phase, so the crown never looks
         // like a cog turning.
         const wave = Math.sin(time * 1.6 + i * 0.9 + b.center.x * 0.05) * 0.22;
         const reach = r + 5 + Math.sin(time * 2.1 + i) * 2;
-        g.beginPath();
         g.moveTo(Math.cos(a) * r * 0.45, Math.sin(a) * r * 0.45);
         g.quadraticCurveTo(
           Math.cos(a + wave) * r * 0.9,
@@ -156,8 +158,8 @@ export const TIDE_ART: ArtSpec = {
           Math.cos(a + wave * 2.2) * reach,
           Math.sin(a + wave * 2.2) * reach,
         );
-        g.stroke();
       }
+      g.stroke();
 
       const bulb = g.createRadialGradient(-r * 0.2, -r * 0.25, 1, 0, 0, r * 0.6);
       bulb.addColorStop(0, lit > 0 ? theme.ballLight : shade(theme.primary, 1.3));
@@ -222,22 +224,24 @@ export const TIDE_ART: ArtSpec = {
       g.globalCompositeOperation = 'lighter';
       g.strokeStyle = withAlpha(theme.primary, 0.06 + strength * 0.16);
       g.lineCap = 'round';
-      for (let i = 0; i < 9; i += 1) {
-        const ly = y + ((i + 0.5) / 9) * h;
+      // One path for the whole band, and fewer streaks in it. Twenty-seven
+      // strokes a frame bought no more legibility than twelve.
+      g.lineWidth = 1.4 + strength * 1.6;
+      g.beginPath();
+      for (let i = 0; i < 6; i += 1) {
+        const ly = y + ((i + 0.5) / 6) * h;
         // Each streak runs at its own rate, so the band shears rather than
         // sliding as one sheet.
         const speed = 60 + (i % 3) * 34;
         const offset = ((time * speed * Math.sign(flow)) % (w + 120)) - 60;
         const len = 26 + strength * 52;
-        g.lineWidth = 1.4 + strength * 1.6;
-        for (const k of [0, 1, 2]) {
-          const sx = x + ((offset + (k * (w + 120)) / 3 + w + 120) % (w + 120)) - 30;
-          g.beginPath();
+        for (const k of [0, 1]) {
+          const sx = x + ((offset + (k * (w + 120)) / 2 + w + 120) % (w + 120)) - 30;
           g.moveTo(Math.max(x, sx), ly);
           g.lineTo(Math.min(x + w, sx + len * Math.sign(flow || 1)), ly);
-          g.stroke();
         }
       }
+      g.stroke();
       g.restore();
     },
 
@@ -245,12 +249,13 @@ export const TIDE_ART: ArtSpec = {
       // Silt sinks, bubbles rise, and the shafts breathe over both.
       g.save();
       g.globalCompositeOperation = 'lighter';
-      for (const [i, s] of SHAFTS.entries()) {
-        const grad = g.createLinearGradient(s.x, 0, s.x + s.lean, TABLE_H * 0.8);
-        const strength = 0.025 + 0.03 * (0.5 + 0.5 * Math.sin(time * 0.7 + s.phase + i));
-        grad.addColorStop(0, withAlpha(theme.wash, strength));
-        grad.addColorStop(1, withAlpha(theme.wash, 0));
-        g.fillStyle = grad;
+      // Three shafts breathe, not five, and they share a flat wash rather
+      // than a gradient apiece. A fresh linear gradient per shaft per frame
+      // was the most expensive thing on this table, for a shimmer the eye
+      // reads as nothing more than a change in brightness.
+      for (const [i, s] of SHAFTS.slice(0, 3).entries()) {
+        const strength = 0.02 + 0.025 * (0.5 + 0.5 * Math.sin(time * 0.7 + s.phase + i));
+        g.fillStyle = withAlpha(theme.wash, strength);
         const drift = Math.sin(time * 0.35 + s.phase) * 10;
         g.beginPath();
         g.moveTo(s.x - s.width / 2 + drift, 0);

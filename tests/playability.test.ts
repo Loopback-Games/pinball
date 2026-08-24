@@ -241,6 +241,76 @@ for (const machine of MACHINES) {
     });
   });
 
+  describe(`${machine.name}: the ball gets out of the bottom`, () => {
+    it('does not rally between the slingshots', () => {
+      // A ball trapped bouncing along the bottom is not a wedged ball and not
+      // an idle one, so neither the trap sweep nor the endurance check can see
+      // it: it is moving, and it is moving far enough to keep resetting the
+      // confinement anchor. It has to be measured as what it is — time spent
+      // down there, and how often the slingshots are firing.
+      //
+      // This is a real regression. Cutting one machine's drag to make it
+      // livelier left the ball unable to bleed off speed in the lower
+      // playfield, and it simply rallied between the two slingshots: 92% of
+      // its life below the targets at 2.45 slingshots a second, against 0.41
+      // on a healthy table. Two slingshots on a 0.6 second rearm cannot
+      // produce much over 3 a second at all, so it was close to saturated —
+      // the rearm exists to stop an endless rally, and less drag walked
+      // around it.
+      // Measured against the bot that aims, not the one that flips at
+      // everything. The busy bot keeps batting a ball that is already low
+      // straight back down, which on a deliberately floaty table reads as a
+      // rally whether or not the table has one.
+      let slings = 0;
+      let lowFrames = 0;
+      let frames = 0;
+      for (let seed = 1; seed <= 6; seed += 1) {
+        const game = new Game(seed, machine);
+        game.onSound = (name) => {
+          if (name === 'sling') slings += 1;
+        };
+        game.startGame();
+        let held = 0;
+        for (let i = 0; i < 60 * 120; i += 1) {
+          if (game.phase === 'gameOver') break;
+          const intents = noIntents();
+          if (game.phase === 'ready') {
+            held += 1;
+            intents.plunger = held % 60 < 40;
+          }
+          for (const entry of game.balls) {
+            if (entry.mode !== 'play' || entry.ball.vel.y < 0) continue;
+            for (const f of game.table.flippers) {
+              const tipX = f.pivot.x + Math.cos(f.restAngle) * f.length;
+              const tipY = f.pivot.y + Math.sin(f.restAngle) * f.length;
+              if (Math.hypot(entry.ball.pos.x - tipX, entry.ball.pos.y - tipY) > 55) continue;
+              if (f.id === 'flipper-left') intents.leftFlipper = true;
+              else intents.rightFlipper = true;
+            }
+          }
+          game.update(1 / 60, intents);
+          for (const entry of game.balls) {
+            if (entry.mode !== 'play') continue;
+            frames += 1;
+            if (entry.ball.pos.y > 640) lowFrames += 1;
+          }
+        }
+      }
+      expect(frames, 'the bot never got a ball into play').toBeGreaterThan(60 * 20);
+
+      const perSecond = slings / (frames / 60);
+      const lowShare = lowFrames / frames;
+      // Healthy tables measure 0.4 to 0.9 a second and 32% to 45%; the broken
+      // one measured 2.45 and 92%. The budget sits between, with room for a
+      // machine that legitimately keeps play lower than the others.
+      expect(perSecond, `slingshots ${perSecond.toFixed(2)}/s`).toBeLessThan(1.6);
+      expect(
+        lowShare,
+        `${(lowShare * 100).toFixed(0)}% of ball life below the targets`,
+      ).toBeLessThan(0.65);
+    }, 60_000);
+  });
+
   describe(`${machine.name}: a game always ends`, () => {
     it('reaches game over even if the player never touches a flipper', () => {
       const game = new Game(0x5eed, machine);

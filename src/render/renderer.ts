@@ -104,7 +104,15 @@ export class Renderer {
 
   /** Match the canvas to the viewport and rebuild the static art. */
   resize(table: Table): void {
-    this.dpr = Math.min(globalThis.devicePixelRatio || 1, 2.5);
+    // Capped at 2 rather than at the device's own ratio.
+    //
+    // The cost of a frame here is dominated by how many pixels it has to
+    // fill, not by how much is drawn into them. On a phone-class CPU,
+    // measured at four times throttling, dropping the cap from 2.5 to 2 took
+    // the space table from 20fps to 29 and the wreck from 16 to 23 — around
+    // 45% either way, for a difference in sharpness nobody can see at arm's
+    // length. Frame rate is what a player feels as flipper lag, so it wins.
+    this.dpr = Math.min(globalThis.devicePixelRatio || 1, 2);
     const cssWidth = this.canvas.clientWidth || window.innerWidth;
     const cssHeight = this.canvas.clientHeight || window.innerHeight;
     this.canvas.width = Math.round(cssWidth * this.dpr);

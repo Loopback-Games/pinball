@@ -209,10 +209,20 @@ export const MOLTEN_CORE: Machine = {
   theme: MOLTEN_THEME,
   art: MOLTEN_ART,
   sound: MOLTEN_SOUND,
-  // Heavy and lively: the ball falls harder and keeps more of what it has, so
-  // the packed bumper diamond rattles rather than absorbs, and a shot that
-  // gets away from you is gone before you can think about it.
-  physics: { gravity: 1950, drag: 0.15, bounceThreshold: 18 },
+  // Heavy: the ball falls harder than anywhere else, so the packed bumper
+  // diamond rattles rather than absorbs and a shot that gets away is gone
+  // before you can think about it.
+  //
+  // Drag stays at the default, and that is the whole story of this line. It
+  // was cut to 0.15 to make the table livelier as well as heavier, which
+  // worked far too well in the wrong place: with less to bleed off its speed
+  // the ball stopped losing energy in the lower playfield and simply rallied
+  // between the two slingshots. Measured, it spent 92% of its life below the
+  // targets and took a slingshot 2.45 times a second — against 0.41 on Orbit
+  // Cadet, and close to the 3.3 a second that two slingshots on a 0.6 second
+  // rearm can even produce. The rearm exists to stop an endless rally, and
+  // less drag walked straight around it.
+  physics: { gravity: 1950 },
   ranks: ['Apprentice', 'Smith', 'Founder', 'Bloomer', 'Master', 'Forgemaster'],
   missions: MISSIONS,
   buildTable: buildMoltenTable,
