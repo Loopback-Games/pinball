@@ -18,8 +18,11 @@ import { SCORE, SPINNER_VALUE_MAX, SPINS_TO_ARM_WARP } from '../game/rules.js';
 import type { Vec2 } from '../engine/vec2.js';
 import { clamp } from '../engine/vec2.js';
 import type { Theme } from './theme.js';
-import { ORBIT_THEME, seeded, shade, withAlpha } from './theme.js';
+import { ORBIT_THEME, shade, withAlpha } from './theme.js';
+import type { MachineArt } from './art.js';
+import { resolveArt } from './art.js';
 import { attractLayout } from './attract-layout.js';
+import { glow, offsetPath, railRibbon, roundRect } from './paint.js';
 
 /** Width the audio buttons occupy in the top-right corner, in CSS pixels. */
 const AUDIO_BUTTON_SPAN = 96;
@@ -79,6 +82,8 @@ export class Renderer {
    * new colours.
    */
   private theme: Theme = ORBIT_THEME;
+  /** The machine's forms, resolved once per swap rather than per call site. */
+  private art: MachineArt = resolveArt({});
   /**
    * Which machine the cached static layer was painted for.
    *
@@ -161,49 +166,13 @@ export class Renderer {
     if (!g) return;
     g.scale(w / TABLE_W, h / TABLE_H);
 
-    this.paintPlayfield(g);
+    const paint = { theme: this.theme, table };
+    this.art.cached.backdrop(g, paint);
     this.paintDecor(g, table);
-    this.paintWalls(g, table);
+    this.art.cached.rails(g, paint);
+    this.art.cached.saucer(g, paint);
+    this.paintHardware(g, table);
     this.staticLayer = layer;
-  }
-
-  private paintPlayfield(g: CanvasRenderingContext2D): void {
-    const base = g.createLinearGradient(0, 0, 0, TABLE_H);
-    base.addColorStop(0, this.theme.playfieldTop);
-    base.addColorStop(0.55, this.theme.playfieldMid);
-    base.addColorStop(1, this.theme.playfieldBottom);
-    g.fillStyle = base;
-    g.fillRect(0, 0, TABLE_W, TABLE_H);
-
-    // Flecks over the whole playfield, fixed by seed so the art is the same
-    // every load: stars in space, embers over a forge, silt in deep water.
-    const rand = seeded(0x5eed);
-    for (let i = 0; i < 420; i += 1) {
-      const x = rand() * TABLE_W;
-      const y = rand() * TABLE_H;
-      const r = rand() * 1.1 + 0.25;
-      g.globalAlpha = 0.15 + rand() * 0.6;
-      g.fillStyle = rand() > 0.85 ? this.theme.primary : this.theme.fleck;
-      g.beginPath();
-      g.arc(x, y, r, 0, Math.PI * 2);
-      g.fill();
-    }
-    g.globalAlpha = 1;
-
-    // A wash behind the upper playfield, to give the top some depth.
-    const neb = g.createRadialGradient(278, 210, 10, 278, 210, 280);
-    neb.addColorStop(0, withAlpha(this.theme.wash, 0.4));
-    neb.addColorStop(0.5, withAlpha(this.theme.wash, 0.16));
-    neb.addColorStop(1, withAlpha(this.theme.wash, 0));
-    g.fillStyle = neb;
-    g.fillRect(0, 0, TABLE_W, 620);
-
-    // Vignette towards the drain, so the eye is drawn down the table.
-    const vig = g.createRadialGradient(PLAY_CENTER, 420, 120, PLAY_CENTER, 620, 680);
-    vig.addColorStop(0, 'rgba(0,0,0,0)');
-    vig.addColorStop(1, 'rgba(0,0,0,0.62)');
-    g.fillStyle = vig;
-    g.fillRect(0, 0, TABLE_W, TABLE_H);
   }
 
   /**
@@ -341,101 +310,13 @@ export class Renderer {
     }
   }
 
-  private paintWalls(g: CanvasRenderingContext2D, table: Table): void {
-    // Structural rails first, then a bright inner line so they read as metal.
-    for (const pass of [
-      { width: 11, style: this.theme.railDark },
-      { width: 7, style: this.theme.railMid },
-      { width: 2.5, style: this.theme.railLight },
-    ]) {
-      g.strokeStyle = pass.style;
-      g.lineWidth = pass.width;
-      g.lineCap = 'round';
-      for (const c of table.colliders) {
-        if (c.id !== 'wall' && c.id !== 'guide') continue;
-        g.beginPath();
-        if (c.kind === 'segment') {
-          g.moveTo(c.a.x, c.a.y);
-          g.lineTo(c.b.x, c.b.y);
-        } else if (c.kind === 'arc') {
-          g.arc(c.center.x, c.center.y, c.radius, c.a0, c.a1);
-        } else {
-          g.arc(c.center.x, c.center.y, c.radius, 0, Math.PI * 2);
-        }
-        g.stroke();
-      }
-    }
-
-    // Every one-way gate, in brass, drawn from the collider itself so a gate
-    // can never exist in the physics without appearing on the playfield.
-    for (const c of table.colliders) {
-      if (c.id !== 'gate' || c.kind !== 'segment') continue;
-      g.lineCap = 'round';
-      g.strokeStyle = 'rgba(0,0,0,0.5)';
-      g.lineWidth = 6;
-      g.beginPath();
-      g.moveTo(c.a.x, c.a.y + 2);
-      g.lineTo(c.b.x, c.b.y + 2);
-      g.stroke();
-      g.strokeStyle = this.theme.highlight;
-      g.lineWidth = 3.5;
-      g.beginPath();
-      g.moveTo(c.a.x, c.a.y);
-      g.lineTo(c.b.x, c.b.y);
-      g.stroke();
-      // Hinge pips, so it reads as a gate rather than a wall.
-      g.fillStyle = this.theme.railLight;
-      for (const end of [c.a, c.b]) {
-        g.beginPath();
-        g.arc(end.x, end.y, 3, 0, Math.PI * 2);
-        g.fill();
-      }
-    }
-
-    // Saucer: a kickout hole with a lit collar, so it reads as a target rather
-    // than a smudge on the playfield.
-    const s = table.saucer;
-    g.save();
-    g.translate(s.center.x, s.center.y);
-
-    const collar = g.createRadialGradient(0, 0, s.radius - 12, 0, 0, s.radius + 12);
-    collar.addColorStop(0, withAlpha(this.theme.feature, 0.45));
-    collar.addColorStop(1, withAlpha(this.theme.feature, 0));
-    g.fillStyle = collar;
-    g.beginPath();
-    g.arc(0, 0, s.radius + 12, 0, Math.PI * 2);
-    g.fill();
-
-    const hole = g.createRadialGradient(0, -4, 2, 0, 0, s.radius - 2);
-    hole.addColorStop(0, shade(this.theme.holeMid, 0));
-    hole.addColorStop(0.7, this.theme.holeMid);
-    hole.addColorStop(1, this.theme.holeRim);
-    g.fillStyle = hole;
-    g.beginPath();
-    g.arc(0, 0, s.radius - 3, 0, Math.PI * 2);
-    g.fill();
-
-    // The cup wall, open at the bottom where the ball enters.
-    g.beginPath();
-    g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
-    g.strokeStyle = this.theme.railMid;
-    g.lineWidth = 7;
-    g.lineCap = 'round';
-    g.stroke();
-    g.beginPath();
-    g.arc(0, 0, s.radius, Math.PI * 0.75, Math.PI * 2.25);
-    g.strokeStyle = this.theme.railLight;
-    g.lineWidth = 2;
-    g.stroke();
-
-    g.fillStyle = this.theme.feature;
-    g.font = '700 11px ui-monospace, Menlo, monospace';
-    g.textAlign = 'center';
-    g.fillText(table.saucerLabel, 0, s.radius + 20);
-    g.restore();
-
-    // Posts, each wearing a rubber ring so it reads as a post rather than a
-    // stray ball.
+  /**
+   * Generic hardware that belongs to no theme in particular.
+   *
+   * Posts are a rubber ring on a steel pin whatever the table is about, so
+   * they stay here rather than becoming a slot every machine has to restate.
+   */
+  private paintHardware(g: CanvasRenderingContext2D, table: Table): void {
     for (const p of table.posts) {
       g.beginPath();
       g.arc(p.center.x, p.center.y, p.radius + 4, 0, Math.PI * 2);
@@ -487,6 +368,7 @@ export class Renderer {
     if (this.paintedMachine !== game.machine.id) {
       this.paintedMachine = game.machine.id;
       this.theme = game.machine.theme;
+      this.art = resolveArt(game.machine.art);
       this.buildStaticLayer(game.table);
     }
 
@@ -501,7 +383,7 @@ export class Renderer {
 
     this.drawInserts(ctx, game, time);
     this.drawSpinner(ctx, game, time);
-    this.drawTargets(ctx, game);
+    this.drawTargets(ctx, game, time);
     this.drawBumpers(ctx, game, time);
     this.drawSlingshotFlash(ctx, game);
     this.drawFlippers(ctx, game);
@@ -511,6 +393,7 @@ export class Renderer {
     this.drawBalls(ctx, game, false);
     this.drawRamp(ctx, game, time);
     this.drawBalls(ctx, game, true);
+    this.art.live.ambient(ctx, { theme: this.theme, table: game.table, time });
     this.drawEffects(ctx, game);
     ctx.restore();
 
@@ -630,7 +513,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(s.center.x, s.center.y, s.radius + 9, 0, Math.PI * 2);
       ctx.stroke();
-      this.glow(ctx, s.center.x, s.center.y, s.radius + 30, this.theme.primary, 0.4 * pulse);
+      glow(ctx, s.center.x, s.center.y, s.radius + 30, this.theme.primary, 0.4 * pulse);
       ctx.globalAlpha = Math.min(1, pulse + 0.2);
       ctx.fillStyle = this.theme.primary;
       ctx.font = '700 11px ui-monospace, Menlo, monospace';
@@ -652,7 +535,7 @@ export class Renderer {
       ctx.beginPath();
       ctx.arc(p.x, p.y, 7, 0, Math.PI * 2);
       ctx.fill();
-      this.glow(ctx, p.x, p.y, 22, color, 0.5);
+      glow(ctx, p.x, p.y, 22, color, 0.5);
       ctx.restore();
     }
 
@@ -678,9 +561,9 @@ export class Renderer {
       ctx.lineWidth = 1.4;
       ctx.globalAlpha = 1;
       ctx.stroke();
-      if (skill) this.glow(ctx, 0, 0, 40, this.theme.primary, 0.35 + pulse * 0.4);
+      if (skill) glow(ctx, 0, 0, 40, this.theme.primary, 0.35 + pulse * 0.4);
       else if (collected || flash > 0) {
-        this.glow(ctx, 0, 0, 30 * Math.max(flash, 0.5), this.theme.highlight, 0.4);
+        glow(ctx, 0, 0, 30 * Math.max(flash, 0.5), this.theme.highlight, 0.4);
       }
       ctx.restore();
     }
@@ -699,12 +582,13 @@ export class Renderer {
       ctx.lineTo(-9, 6);
       ctx.closePath();
       ctx.fill();
-      this.glow(ctx, 0, 0, 34, this.theme.success, pulse * 0.5);
+      glow(ctx, 0, 0, 34, this.theme.success, pulse * 0.5);
       ctx.restore();
     }
   }
 
-  private drawTargets(ctx: CanvasRenderingContext2D, game: Game): void {
+  private drawTargets(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
+    const live = { theme: this.theme, table: game.table, time };
     for (const t of game.table.dropTargets) {
       const lit = game.lamps.get(t.id) ?? 0;
       if (!t.collider.enabled) {
@@ -717,91 +601,18 @@ export class Renderer {
         ctx.stroke();
         continue;
       }
-      this.drawTargetFace(ctx, t.a, t.b, this.theme.secondary, lit);
+      this.art.live.target(ctx, live, t.a, t.b, this.theme.secondary, lit);
     }
     for (const t of game.table.standupTargets) {
       const lit = game.lamps.get(t.id) ?? 0;
-      this.drawTargetFace(ctx, t.a, t.b, this.theme.success, lit);
+      this.art.live.target(ctx, live, t.a, t.b, this.theme.success, lit);
     }
-  }
-
-  private drawTargetFace(
-    ctx: CanvasRenderingContext2D,
-    a: Vec2,
-    b: Vec2,
-    color: string,
-    lit: number,
-  ): void {
-    ctx.save();
-    ctx.lineCap = 'round';
-    // Shadow, then a dark base plate, then the coloured face on top.
-    ctx.strokeStyle = 'rgba(0, 0, 0, 0.5)';
-    ctx.lineWidth = 14;
-    ctx.beginPath();
-    ctx.moveTo(a.x + 2, a.y + 4);
-    ctx.lineTo(b.x + 2, b.y + 4);
-    ctx.stroke();
-    ctx.strokeStyle = shade(this.theme.playfieldTop, 1.15);
-    ctx.lineWidth = 13;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y);
-    ctx.lineTo(b.x, b.y);
-    ctx.stroke();
-    ctx.strokeStyle = color;
-    ctx.globalAlpha = 0.65 + lit * 0.35;
-    ctx.lineWidth = 8;
-    ctx.stroke();
-    ctx.globalAlpha = 1;
-    ctx.strokeStyle = 'rgba(255,255,255,0.55)';
-    ctx.lineWidth = 1.5;
-    ctx.beginPath();
-    ctx.moveTo(a.x, a.y - 2);
-    ctx.lineTo(b.x, b.y - 2);
-    ctx.stroke();
-    if (lit > 0) {
-      this.glow(ctx, (a.x + b.x) / 2, (a.y + b.y) / 2, 34 * lit, color, lit * 0.6);
-    }
-    ctx.restore();
   }
 
   private drawBumpers(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
+    const live = { theme: this.theme, table: game.table, time };
     for (const b of game.table.bumpers) {
-      const lit = game.lamps.get(b.id) ?? 0;
-      const r = b.radius * (1 + lit * 0.09);
-      ctx.save();
-      ctx.translate(b.center.x, b.center.y);
-
-      // Skirt.
-      ctx.beginPath();
-      ctx.arc(0, 0, r + 7, 0, Math.PI * 2);
-      ctx.fillStyle = withAlpha(this.theme.voidBottom, 0.85);
-      ctx.fill();
-      ctx.strokeStyle = this.theme.railMid;
-      ctx.lineWidth = 2;
-      ctx.stroke();
-
-      // Cap.
-      const cap = ctx.createRadialGradient(-r * 0.3, -r * 0.35, 2, 0, 0, r);
-      cap.addColorStop(0, lit > 0 ? this.theme.ballLight : shade(this.theme.primary, 1.35));
-      cap.addColorStop(0.5, this.theme.primary);
-      cap.addColorStop(1, shade(this.theme.primary, 0.32));
-      ctx.beginPath();
-      ctx.arc(0, 0, r, 0, Math.PI * 2);
-      ctx.fillStyle = cap;
-      ctx.fill();
-
-      // Rotating ring, so an idle table still has motion.
-      ctx.rotate(time * 0.6);
-      ctx.strokeStyle = `rgba(255,255,255,${0.18 + lit * 0.6})`;
-      ctx.lineWidth = 2;
-      ctx.setLineDash([5, 7]);
-      ctx.beginPath();
-      ctx.arc(0, 0, r - 5, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.setLineDash([]);
-
-      if (lit > 0) this.glow(ctx, 0, 0, r * 2.4 * lit, this.theme.primary, lit * 0.7);
-      ctx.restore();
+      this.art.live.bumper(ctx, live, b, game.lamps.get(b.id) ?? 0);
     }
   }
 
@@ -818,7 +629,7 @@ export class Renderer {
       ctx.moveTo(s.a.x, s.a.y);
       ctx.lineTo(s.c.x, s.c.y);
       ctx.stroke();
-      this.glow(
+      glow(
         ctx,
         (s.a.x + s.c.x) / 2,
         (s.a.y + s.c.y) / 2,
@@ -1006,7 +817,7 @@ export class Renderer {
       // colour that would leave the mouth and the arrow disagreeing.
       const armed = forked && this.diverter > 0.5;
       const pulse = armed ? 0.5 + Math.sin(time * 7) * 0.3 : 0.45;
-      this.glow(ctx, entry.x, entry.y, armed ? 44 : 36, this.theme.feature, pulse);
+      glow(ctx, entry.x, entry.y, armed ? 44 : 36, this.theme.feature, pulse);
       ctx.strokeStyle = this.theme.feature;
       ctx.lineWidth = 3;
       ctx.beginPath();
@@ -1032,40 +843,10 @@ export class Renderer {
     ctx.restore();
   }
 
-  /** Offset copy of `path`, `d` units to its left, shifted down by `dy`. */
-  private static offsetPath(path: readonly Vec2[], d: number, dy: number): Vec2[] {
-    return path.map((p, i) => {
-      const prev = path[Math.max(0, i - 1)] ?? p;
-      const next = path[Math.min(path.length - 1, i + 1)] ?? p;
-      const tx = next.x - prev.x;
-      const ty = next.y - prev.y;
-      const len = Math.hypot(tx, ty) || 1;
-      return { x: p.x + (-ty / len) * d, y: p.y + (tx / len) * d + dy };
-    });
-  }
-
-  /** Trace the closed outline of a rail `d` units wide, shifted down by `dy`. */
-  private railRibbon(
-    ctx: CanvasRenderingContext2D,
-    path: readonly Vec2[],
-    d: number,
-    dy: number,
-  ): void {
-    const a = Renderer.offsetPath(path, d, dy);
-    const b = Renderer.offsetPath(path, -d, dy);
-    ctx.beginPath();
-    a.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
-    for (let i = b.length - 1; i >= 0; i -= 1) {
-      const p = b[i];
-      if (p) ctx.lineTo(p.x, p.y);
-    }
-    ctx.closePath();
-  }
-
   private railShadow(ctx: CanvasRenderingContext2D, path: readonly Vec2[]): void {
     if (path.length < 2) return;
     ctx.fillStyle = 'rgba(0, 0, 0, 0.45)';
-    this.railRibbon(ctx, path, 11, 20);
+    railRibbon(ctx, path, 11, 20);
     ctx.fill();
   }
 
@@ -1079,12 +860,12 @@ export class Renderer {
     surface.addColorStop(0, o.from);
     surface.addColorStop(1, o.to);
     ctx.fillStyle = surface;
-    this.railRibbon(ctx, path, o.width, 0);
+    railRibbon(ctx, path, o.width, 0);
     ctx.fill();
 
     // Raised edges either side.
     for (const d of [-o.width, o.width]) {
-      const edge = Renderer.offsetPath(path, d, 0);
+      const edge = offsetPath(path, d, 0);
       ctx.beginPath();
       edge.forEach((p, i) => (i === 0 ? ctx.moveTo(p.x, p.y) : ctx.lineTo(p.x, p.y)));
       ctx.strokeStyle = withAlpha(shade(this.theme.playfieldTop, 1.3), 0.85);
@@ -1105,8 +886,8 @@ export class Renderer {
 
   /** Hoops across a rail, which is what makes it read as a tube not a trough. */
   private railRibs(ctx: CanvasRenderingContext2D, path: readonly Vec2[], width: number): void {
-    const left = Renderer.offsetPath(path, width, 0);
-    const right = Renderer.offsetPath(path, -width, 0);
+    const left = offsetPath(path, width, 0);
+    const right = offsetPath(path, -width, 0);
     ctx.save();
     ctx.strokeStyle = withAlpha(shade(this.theme.feature, 1.3), 0.3);
     ctx.lineWidth = 1.4;
@@ -1201,7 +982,7 @@ export class Renderer {
     ctx.fill();
     ctx.stroke();
     ctx.restore();
-    if (lit) this.glow(ctx, fork.x, fork.y, 26, this.theme.feature, 0.35 * this.diverter);
+    if (lit) glow(ctx, fork.x, fork.y, 26, this.theme.feature, 0.35 * this.diverter);
   }
 
   /**
@@ -1274,7 +1055,7 @@ export class Renderer {
     ctx.stroke();
 
     if (Math.abs(rate) > 1) {
-      this.glow(ctx, 0, 0, 30, color, clamp(Math.abs(rate) / 34, 0.15, 0.6));
+      glow(ctx, 0, 0, 30, color, clamp(Math.abs(rate) / 34, 0.15, 0.6));
     }
     ctx.restore();
 
@@ -1371,30 +1152,6 @@ export class Renderer {
     }
     ctx.restore();
   }
-
-  private glow(
-    ctx: CanvasRenderingContext2D,
-    x: number,
-    y: number,
-    radius: number,
-    color: string,
-    alpha: number,
-  ): void {
-    if (radius <= 0) return;
-    const g = ctx.createRadialGradient(x, y, 0, x, y, radius);
-    g.addColorStop(0, color);
-    g.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.save();
-    ctx.globalAlpha = alpha;
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.fillStyle = g;
-    ctx.beginPath();
-    ctx.arc(x, y, radius, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.restore();
-  }
-
-  /* ------------------------------------------------------------------ */
 
   private drawHud(ctx: CanvasRenderingContext2D, game: Game, time: number): void {
     const { hud } = this.layout;
@@ -1924,21 +1681,4 @@ export class Renderer {
 function missionFraction(game: Game, target: number): number {
   const done = game.missionProgress;
   return Math.max(0, Math.min(1, done / target));
-}
-
-function roundRect(
-  ctx: CanvasRenderingContext2D,
-  x: number,
-  y: number,
-  w: number,
-  h: number,
-  r: number,
-): void {
-  ctx.beginPath();
-  ctx.moveTo(x + r, y);
-  ctx.arcTo(x + w, y, x + w, y + h, r);
-  ctx.arcTo(x + w, y + h, x, y + h, r);
-  ctx.arcTo(x, y + h, x, y, r);
-  ctx.arcTo(x, y, x + w, y, r);
-  ctx.closePath();
 }

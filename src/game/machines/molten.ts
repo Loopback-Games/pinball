@@ -200,6 +200,7 @@ export const MOLTEN_CORE: Machine = {
   name: 'Molten Core',
   tagline: 'No rail. Four bumpers, eight targets.',
   theme: MOLTEN_THEME,
+  art: {},
   ranks: ['Apprentice', 'Smith', 'Founder', 'Bloomer', 'Master', 'Forgemaster'],
   missions: MISSIONS,
   buildTable: buildMoltenTable,

@@ -193,6 +193,7 @@ export const TIDEWRECK: Machine = {
   name: 'Tidewreck',
   tagline: 'No posts, bumpers in a row, room to move.',
   theme: TIDE_THEME,
+  art: {},
   ranks: ['Diver', 'Salvor', 'Bosun', 'Mate', 'Skipper', 'Wreckmaster'],
   missions: MISSIONS,
   buildTable: buildTideTable,
