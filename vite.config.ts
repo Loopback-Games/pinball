@@ -2,7 +2,12 @@ import { defineConfig } from 'vitest/config';
 
 // Project pages are served from https://<org>.github.io/<repo>/, so every asset
 // URL needs the repository name as a prefix. Local dev serves from the root.
-const base = process.env.GITHUB_ACTIONS ? '/pinball/' : '/';
+//
+// Taken from the repository the workflow is actually running in rather than
+// hardcoded, so a fork under another name builds a working site instead of one
+// that 404s on its own bundle.
+const repository = process.env.GITHUB_REPOSITORY?.split('/')[1];
+const base = process.env.GITHUB_ACTIONS && repository ? `/${repository}/` : '/';
 
 export default defineConfig({
   base,

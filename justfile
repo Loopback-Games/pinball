@@ -16,9 +16,15 @@ lint:
     npm run typecheck
     npm run fmt:check
 
-# Audit the dependency tree.
+# Audit the dependency tree, twice.
+#
+# npm audit is noisy and reports against advisories that often do not apply to
+# a dev-only tree, so a second opinion from a different database is worth the
+# few seconds. osv-scanner is optional: skipped rather than failed when it is
+# not on the machine.
 security:
     npm run security
+    @command -v osv-scanner >/dev/null && osv-scanner scan source --lockfile package-lock.json || echo "osv-scanner not installed, skipped"
 
 # Run the unit tests.
 test:

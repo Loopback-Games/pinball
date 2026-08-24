@@ -5,6 +5,9 @@
   "type": "module",
   "description": "A browser pinball game built from procedurally generated assets",
   "license": "MIT",
+  "engines": {
+    "node": ">=22.12"
+  },
   "scripts": {
     "build": "tsc --noEmit && vite build",
     "dev": "vite",
