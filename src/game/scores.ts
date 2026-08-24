@@ -16,7 +16,17 @@ export interface ScoreEntry {
 /** How many places the board keeps. */
 export const SCOREBOARD_SIZE = 5;
 
-const KEY = 'loopback-pinball-scores';
+/**
+ * Where a machine's board lives.
+ *
+ * Keyed per machine, because a score is only meaningful against the layout it
+ * was set on: the tables differ in how many features they have and how much
+ * they pay, so one shared board would rank a good game on one against a lucky
+ * one on another.
+ */
+const keyFor = (machineId: string): string => `loopback-pinball-scores:${machineId}`;
+/** The board every machine shared before there was more than one. */
+const SHARED_KEY = 'loopback-pinball-scores';
 /** The single value the game stored before the board existed. */
 const LEGACY_KEY = 'loopback-pinball-high-score';
 
@@ -61,12 +71,15 @@ function parseEntry(value: unknown): ScoreEntry | null {
 
 const byScore = (a: ScoreEntry, b: ScoreEntry): number => b.score - a.score;
 
-/** Every score this browser has kept, best first. */
-export function readScoreboard(): ScoreEntry[] {
+/** Every score this browser has kept for `machineId`, best first. */
+export function readScoreboard(machineId: string): ScoreEntry[] {
   const storage = globalThis.localStorage;
   if (!storage) return [];
   try {
-    const raw = storage.getItem(KEY);
+    // A board saved before machines existed belongs to the machine that was
+    // the only one at the time, so it is read as that machine's and nobody
+    // loses the games they have already played.
+    const raw = storage.getItem(keyFor(machineId)) ?? legacyRaw(storage, machineId);
     if (raw) {
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
@@ -79,6 +92,7 @@ export function readScoreboard(): ScoreEntry[] {
     }
     // No board yet: carry over the single high score kept by older versions so
     // nobody loses the one number the game used to remember.
+    if (machineId !== LEGACY_MACHINE) return [];
     const legacy = parseEntry({
       score: Number.parseInt(storage.getItem(LEGACY_KEY) ?? '', 10),
       rank: '',
@@ -91,9 +105,17 @@ export function readScoreboard(): ScoreEntry[] {
   }
 }
 
-function writeScoreboard(entries: readonly ScoreEntry[]): void {
+/** The pre-machines board, but only for the machine that predates the rest. */
+function legacyRaw(storage: Storage, machineId: string): string | null {
+  return machineId === LEGACY_MACHINE ? storage.getItem(SHARED_KEY) : null;
+}
+
+/** The machine that was the only one when the shared board was written. */
+const LEGACY_MACHINE = 'orbit-cadet';
+
+function writeScoreboard(machineId: string, entries: readonly ScoreEntry[]): void {
   try {
-    globalThis.localStorage?.setItem(KEY, JSON.stringify(entries));
+    globalThis.localStorage?.setItem(keyFor(machineId), JSON.stringify(entries));
   } catch {
     // Ignore: the board simply will not persist.
   }
@@ -103,15 +125,18 @@ function writeScoreboard(entries: readonly ScoreEntry[]): void {
  * Add `entry` to the stored board and hand back the new board along with the
  * place it took, or -1 if it did not make the cut.
  */
-export function recordScore(entry: ScoreEntry): {
+export function recordScore(
+  machineId: string,
+  entry: ScoreEntry,
+): {
   board: ScoreEntry[];
   position: number;
 } {
-  const board = readScoreboard();
+  const board = readScoreboard(machineId);
   if (entry.score <= 0) return { board, position: -1 };
   const merged = [...board, entry].sort(byScore).slice(0, SCOREBOARD_SIZE);
   const position = merged.indexOf(entry);
-  if (position >= 0) writeScoreboard(merged);
+  if (position >= 0) writeScoreboard(machineId, merged);
   return { board: merged, position };
 }
 

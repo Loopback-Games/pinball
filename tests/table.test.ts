@@ -5,7 +5,7 @@ import { overlap } from '../src/engine/shapes.js';
 import type { Collider } from '../src/engine/shapes.js';
 import type { Vec2 } from '../src/engine/vec2.js';
 import { vec } from '../src/engine/vec2.js';
-import { DEFAULT_MACHINE } from '../src/game/machines/index.js';
+import { MACHINES } from '../src/game/machines/index.js';
 import {
   BALL_RADIUS,
   DOME_CENTER,
@@ -46,155 +46,157 @@ function isPlayable(colliders: readonly Collider[], p: Vec2): boolean {
   return true;
 }
 
-describe('table geometry', () => {
-  it('builds without degenerate colliders', () => {
-    const table = DEFAULT_MACHINE.buildTable();
-    expect(table.colliders.length).toBeGreaterThan(20);
-    for (const c of table.colliders) {
-      if (c.kind === 'segment') {
-        expect(Math.hypot(c.b.x - c.a.x, c.b.y - c.a.y)).toBeGreaterThan(1e-6);
-        expect(Math.hypot(c.normal.x, c.normal.y)).toBeCloseTo(1, 6);
-      } else {
-        expect(c.radius).toBeGreaterThan(0);
+for (const machine of MACHINES) {
+  describe(`${machine.name}: table geometry`, () => {
+    it('builds without degenerate colliders', () => {
+      const table = machine.buildTable();
+      expect(table.colliders.length).toBeGreaterThan(20);
+      for (const c of table.colliders) {
+        if (c.kind === 'segment') {
+          expect(Math.hypot(c.b.x - c.a.x, c.b.y - c.a.y)).toBeGreaterThan(1e-6);
+          expect(Math.hypot(c.normal.x, c.normal.y)).toBeCloseTo(1, 6);
+        } else {
+          expect(c.radius).toBeGreaterThan(0);
+        }
       }
-    }
-  });
+    });
 
-  it('never lets a ball leave the table, from anywhere at any speed', () => {
-    const table = DEFAULT_MACHINE.buildTable();
-    const random = rng(20260823);
-    const escapes: string[] = [];
+    it('never lets a ball leave the table, from anywhere at any speed', () => {
+      const table = machine.buildTable();
+      const random = rng(20260823);
+      const escapes: string[] = [];
 
-    for (let trial = 0; trial < 240; trial += 1) {
+      for (let trial = 0; trial < 240; trial += 1) {
+        const world = new World(DEFAULT_WORLD);
+        world.statics = table.colliders;
+        world.movers = table.flippers;
+
+        // Start somewhere in the play area that a ball could actually occupy.
+        // Points outside the dome are off the table, and a ball started inside a
+        // wall proves nothing.
+        let start = vec(PLAY_CENTER, 600);
+        for (let attempt = 0; attempt < 400; attempt += 1) {
+          const candidate = vec(50 + random() * 460, 50 + random() * 820);
+          if (isPlayable(table.colliders, candidate)) {
+            start = candidate;
+            break;
+          }
+        }
+        const ball = createBall(start, BALL_RADIUS);
+        const angle = random() * Math.PI * 2;
+        const speed = 1200 + random() * 2600;
+        ball.vel = vec(Math.cos(angle) * speed, Math.sin(angle) * speed);
+
+        const events: Collision[] = [];
+        for (let i = 0; i < 480 * 6; i += 1) {
+          for (const f of table.flippers) f.step(H);
+          const prev = ball.pos;
+          const prevSpeed = Math.hypot(ball.vel.x, ball.vel.y);
+          world.substep(ball, H, events);
+          // A ball may only travel about as far as its speed allows. Anything
+          // more means a collider yanked it somewhere, which is how a badly
+          // bounded surface shows itself.
+          const moved = Math.hypot(ball.pos.x - prev.x, ball.pos.y - prev.y);
+          // The slack covers legitimate depenetration, which can move a ball by
+          // up to its own radius in a single step.
+          const allowed =
+            Math.max(prevSpeed, Math.hypot(ball.vel.x, ball.vel.y)) * H + BALL_RADIUS + 6;
+          if (moved > allowed) {
+            escapes.push(
+              `trial ${trial}: jumped ${moved.toFixed(0)} units in one step, ` +
+                `${prev.x.toFixed(0)},${prev.y.toFixed(0)} -> ` +
+                `${ball.pos.x.toFixed(0)},${ball.pos.y.toFixed(0)}`,
+            );
+            break;
+          }
+          if (ball.pos.y > DRAIN_Y) break; // drained, which is legal
+          const outside =
+            ball.pos.x < PLAY_LEFT - BALL_RADIUS ||
+            ball.pos.x > LANE_RIGHT + BALL_RADIUS ||
+            ball.pos.y < -BALL_RADIUS ||
+            ball.pos.y > TABLE_H;
+          if (outside) {
+            escapes.push(
+              `trial ${trial}: escaped to ${ball.pos.x.toFixed(0)},${ball.pos.y.toFixed(0)}`,
+            );
+            break;
+          }
+        }
+      }
+
+      expect(escapes).toEqual([]);
+    });
+
+    it('sends a launched ball out of the shooter lane and into play', () => {
+      const table = machine.buildTable();
       const world = new World(DEFAULT_WORLD);
       world.statics = table.colliders;
       world.movers = table.flippers;
 
-      // Start somewhere in the play area that a ball could actually occupy.
-      // Points outside the dome are off the table, and a ball started inside a
-      // wall proves nothing.
-      let start = vec(PLAY_CENTER, 600);
-      for (let attempt = 0; attempt < 400; attempt += 1) {
-        const candidate = vec(50 + random() * 460, 50 + random() * 820);
-        if (isPlayable(table.colliders, candidate)) {
-          start = candidate;
-          break;
-        }
-      }
-      const ball = createBall(start, BALL_RADIUS);
-      const angle = random() * Math.PI * 2;
-      const speed = 1200 + random() * 2600;
-      ball.vel = vec(Math.cos(angle) * speed, Math.sin(angle) * speed);
+      const ball = createBall(vec(table.plunger.x, table.plunger.y), BALL_RADIUS);
+      ball.vel = vec(0, -2600);
 
       const events: Collision[] = [];
-      for (let i = 0; i < 480 * 6; i += 1) {
-        for (const f of table.flippers) f.step(H);
-        const prev = ball.pos;
-        const prevSpeed = Math.hypot(ball.vel.x, ball.vel.y);
+      let reachedDome = false;
+      for (let i = 0; i < 480 * 4; i += 1) {
         world.substep(ball, H, events);
-        // A ball may only travel about as far as its speed allows. Anything
-        // more means a collider yanked it somewhere, which is how a badly
-        // bounded surface shows itself.
-        const moved = Math.hypot(ball.pos.x - prev.x, ball.pos.y - prev.y);
-        // The slack covers legitimate depenetration, which can move a ball by
-        // up to its own radius in a single step.
-        const allowed =
-          Math.max(prevSpeed, Math.hypot(ball.vel.x, ball.vel.y)) * H + BALL_RADIUS + 6;
-        if (moved > allowed) {
-          escapes.push(
-            `trial ${trial}: jumped ${moved.toFixed(0)} units in one step, ` +
-              `${prev.x.toFixed(0)},${prev.y.toFixed(0)} -> ` +
-              `${ball.pos.x.toFixed(0)},${ball.pos.y.toFixed(0)}`,
-          );
-          break;
-        }
-        if (ball.pos.y > DRAIN_Y) break; // drained, which is legal
-        const outside =
-          ball.pos.x < PLAY_LEFT - BALL_RADIUS ||
-          ball.pos.x > LANE_RIGHT + BALL_RADIUS ||
-          ball.pos.y < -BALL_RADIUS ||
-          ball.pos.y > TABLE_H;
-        if (outside) {
-          escapes.push(
-            `trial ${trial}: escaped to ${ball.pos.x.toFixed(0)},${ball.pos.y.toFixed(0)}`,
-          );
-          break;
-        }
+        if (ball.pos.y < 200) reachedDome = true;
+        if (reachedDome && ball.pos.x < 480) break;
       }
-    }
-
-    expect(escapes).toEqual([]);
+      expect(reachedDome).toBe(true);
+      // Having gone round the dome it must end up in the play area, not stuck
+      // back in the lane.
+      expect(ball.pos.x).toBeLessThan(500);
+    });
   });
 
-  it('sends a launched ball out of the shooter lane and into play', () => {
-    const table = DEFAULT_MACHINE.buildTable();
-    const world = new World(DEFAULT_WORLD);
-    world.statics = table.colliders;
-    world.movers = table.flippers;
+  describe(`${machine.name}: the drain`, () => {
+    it('leaves a gap between the flippers the ball can actually fall through', () => {
+      const table = machine.buildTable();
+      const left = table.leftFlipper;
+      const right = table.rightFlipper;
 
-    const ball = createBall(vec(table.plunger.x, table.plunger.y), BALL_RADIUS);
-    ball.vel = vec(0, -2600);
-
-    const events: Collision[] = [];
-    let reachedDome = false;
-    for (let i = 0; i < 480 * 4; i += 1) {
-      world.substep(ball, H, events);
-      if (ball.pos.y < 200) reachedDome = true;
-      if (reachedDome && ball.pos.x < 480) break;
-    }
-    expect(reachedDome).toBe(true);
-    // Having gone round the dome it must end up in the play area, not stuck
-    // back in the lane.
-    expect(ball.pos.x).toBeLessThan(500);
-  });
-});
-
-describe('the drain', () => {
-  it('leaves a gap between the flippers the ball can actually fall through', () => {
-    const table = DEFAULT_MACHINE.buildTable();
-    const left = table.leftFlipper;
-    const right = table.rightFlipper;
-
-    for (const pressed of [false, true]) {
-      left.pressed = pressed;
-      right.pressed = pressed;
-      for (let i = 0; i < 200; i += 1) {
-        left.step(H);
-        right.step(H);
-      }
-      const batRadius = (left.pivotRadius + left.tipRadius) / 2;
-      const clear = right.tip.x - left.tip.x - batRadius * 2;
-      // A sealed drain is invisible in a screenshot and changes the whole
-      // game: with nowhere to lose a ball down the middle, only the outlanes
-      // can end a ball and play never really ends.
-      expect(clear).toBeGreaterThan(BALL_RADIUS * 2);
-    }
-    left.pressed = false;
-    right.pressed = false;
-  });
-
-  it('drains a ball rolling down the middle, wherever in the gap it enters', () => {
-    const table = DEFAULT_MACHINE.buildTable();
-    const centre = (table.leftFlipper.tip.x + table.rightFlipper.tip.x) / 2;
-
-    for (let offset = -10; offset <= 10; offset += 5) {
-      const world = new World(DEFAULT_WORLD);
-      world.statics = table.colliders;
-      world.movers = table.flippers;
-      const ball = createBall(vec(centre + offset, 700), BALL_RADIUS);
-      ball.vel = vec(0, 400);
-
-      const events: Collision[] = [];
-      let drained = false;
-      for (let i = 0; i < 480 * 6; i += 1) {
-        for (const f of table.flippers) f.step(H);
-        world.substep(ball, H, events);
-        if (ball.pos.y > DRAIN_Y) {
-          drained = true;
-          break;
+      for (const pressed of [false, true]) {
+        left.pressed = pressed;
+        right.pressed = pressed;
+        for (let i = 0; i < 200; i += 1) {
+          left.step(H);
+          right.step(H);
         }
+        const batRadius = (left.pivotRadius + left.tipRadius) / 2;
+        const clear = right.tip.x - left.tip.x - batRadius * 2;
+        // A sealed drain is invisible in a screenshot and changes the whole
+        // game: with nowhere to lose a ball down the middle, only the outlanes
+        // can end a ball and play never really ends.
+        expect(clear).toBeGreaterThan(BALL_RADIUS * 2);
       }
-      expect(drained, `a ball entering at offset ${offset} never drained`).toBe(true);
-    }
+      left.pressed = false;
+      right.pressed = false;
+    });
+
+    it('drains a ball rolling down the middle, wherever in the gap it enters', () => {
+      const table = machine.buildTable();
+      const centre = (table.leftFlipper.tip.x + table.rightFlipper.tip.x) / 2;
+
+      for (let offset = -10; offset <= 10; offset += 5) {
+        const world = new World(DEFAULT_WORLD);
+        world.statics = table.colliders;
+        world.movers = table.flippers;
+        const ball = createBall(vec(centre + offset, 700), BALL_RADIUS);
+        ball.vel = vec(0, 400);
+
+        const events: Collision[] = [];
+        let drained = false;
+        for (let i = 0; i < 480 * 6; i += 1) {
+          for (const f of table.flippers) f.step(H);
+          world.substep(ball, H, events);
+          if (ball.pos.y > DRAIN_Y) {
+            drained = true;
+            break;
+          }
+        }
+        expect(drained, `a ball entering at offset ${offset} never drained`).toBe(true);
+      }
+    });
   });
-});
+}

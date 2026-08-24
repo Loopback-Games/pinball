@@ -1,12 +1,14 @@
 import type { Machine } from '../machine.js';
+import { MOLTEN_CORE } from './molten.js';
 import { ORBIT_CADET } from './orbit.js';
+import { TIDEWRECK } from './tide.js';
 
 /**
  * Every machine, in the order the picker walks them.
  *
  * The first is the default for a browser that has never chosen one.
  */
-export const MACHINES: readonly Machine[] = [ORBIT_CADET];
+export const MACHINES: readonly Machine[] = [ORBIT_CADET, MOLTEN_CORE, TIDEWRECK];
 
 export const DEFAULT_MACHINE: Machine = ORBIT_CADET;
 

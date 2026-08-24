@@ -78,6 +78,14 @@ export class Renderer {
    * new colours.
    */
   private theme: Theme = ORBIT_THEME;
+  /**
+   * Which machine the cached static layer was painted for.
+   *
+   * The renderer notices the swap itself rather than being told, so switching
+   * machines is one new Game in the caller and nothing else: a stale layer
+   * would otherwise leave the old table painted under the new one.
+   */
+  private paintedMachine = '';
   /** Blade position at the habitrail fork, 0 on the ramp, 1 on the warp. */
   private diverter = 0;
   private diverterTime = 0;
@@ -161,30 +169,31 @@ export class Renderer {
   private paintPlayfield(g: CanvasRenderingContext2D): void {
     const base = g.createLinearGradient(0, 0, 0, TABLE_H);
     base.addColorStop(0, this.theme.playfieldTop);
-    base.addColorStop(0.55, '#0a1229');
+    base.addColorStop(0.55, this.theme.playfieldMid);
     base.addColorStop(1, this.theme.playfieldBottom);
     g.fillStyle = base;
     g.fillRect(0, 0, TABLE_W, TABLE_H);
 
-    // A field of stars, fixed by seed so the art is the same every load.
+    // Flecks over the whole playfield, fixed by seed so the art is the same
+    // every load: stars in space, embers over a forge, silt in deep water.
     const rand = seeded(0x5eed);
     for (let i = 0; i < 420; i += 1) {
       const x = rand() * TABLE_W;
       const y = rand() * TABLE_H;
       const r = rand() * 1.1 + 0.25;
       g.globalAlpha = 0.15 + rand() * 0.6;
-      g.fillStyle = rand() > 0.85 ? this.theme.primary : '#ffffff';
+      g.fillStyle = rand() > 0.85 ? this.theme.primary : this.theme.fleck;
       g.beginPath();
       g.arc(x, y, r, 0, Math.PI * 2);
       g.fill();
     }
     g.globalAlpha = 1;
 
-    // A nebula behind the bumper cluster, to give the top some depth.
+    // A wash behind the upper playfield, to give the top some depth.
     const neb = g.createRadialGradient(278, 210, 10, 278, 210, 280);
-    neb.addColorStop(0, 'rgba(90, 60, 200, 0.4)');
-    neb.addColorStop(0.5, 'rgba(40, 90, 190, 0.16)');
-    neb.addColorStop(1, 'rgba(0, 0, 0, 0)');
+    neb.addColorStop(0, withAlpha(this.theme.wash, 0.4));
+    neb.addColorStop(0.5, withAlpha(this.theme.wash, 0.16));
+    neb.addColorStop(1, withAlpha(this.theme.wash, 0));
     g.fillStyle = neb;
     g.fillRect(0, 0, TABLE_W, 620);
 
@@ -421,7 +430,7 @@ export class Renderer {
     g.fillStyle = this.theme.feature;
     g.font = '700 11px ui-monospace, Menlo, monospace';
     g.textAlign = 'center';
-    g.fillText('MISSION', 0, s.radius + 20);
+    g.fillText(table.saucerLabel, 0, s.radius + 20);
     g.restore();
 
     // Posts, each wearing a rubber ring so it reads as a post rather than a
@@ -461,6 +470,10 @@ export class Renderer {
 
   draw(game: Game, time: number, audio: AudioSettings): void {
     const ctx = this.ctx;
+    // Hit targets are rebuilt every frame, because which of them exist depends
+    // on what is on screen: the machine picker is only there while the attract
+    // card is.
+    this.buttons = [];
     ctx.save();
     ctx.scale(this.dpr, this.dpr);
 
@@ -469,6 +482,12 @@ export class Renderer {
     bg.addColorStop(1, this.theme.voidBottom);
     ctx.fillStyle = bg;
     ctx.fillRect(0, 0, this.width, this.height);
+
+    if (this.paintedMachine !== game.machine.id) {
+      this.paintedMachine = game.machine.id;
+      this.theme = game.machine.theme;
+      this.buildStaticLayer(game.table);
+    }
 
     const { scale, offsetX, offsetY } = this.layout;
     ctx.save();
@@ -510,7 +529,10 @@ export class Renderer {
     const gap = 8;
     const margin = 12;
     // Keep this in step with AUDIO_BUTTON_SPAN, which reserves the room.
-    this.buttons = [
+    // Appended rather than assigned: the machine picker registers its arrows
+    // earlier in the same frame, and replacing the list here left them drawn
+    // on screen but dead to the touch.
+    const audioButtons: Button[] = [
       { id: 'music', x: this.width - margin - size, y: margin, w: size, h: size },
       {
         id: 'sfx',
@@ -520,8 +542,9 @@ export class Renderer {
         h: size,
       },
     ];
+    this.buttons.push(...audioButtons);
 
-    for (const b of this.buttons) {
+    for (const b of audioButtons) {
       const wanted = b.id === 'sfx' ? audio.sfx : audio.music;
       // Browsers only let audio start from a gesture, so a bus can be switched
       // on and still be silent. Showing it as fully on would be a lie, and a
@@ -1723,11 +1746,11 @@ export class Renderer {
     // fresh browser gets a compact title card rather than a panel of blanks.
     const boardHeight = board.length > 0 ? 34 + board.length * 22 : 0;
     const top = cy - 120 * scale;
-    const height = (260 + boardHeight) * scale;
+    const height = (302 + boardHeight) * scale;
 
     ctx.save();
     ctx.textAlign = 'center';
-    ctx.fillStyle = 'rgba(3, 6, 16, 0.94)';
+    ctx.fillStyle = withAlpha(this.theme.voidTop, 0.94);
     roundRect(
       ctx,
       offsetX + (PLAY_LEFT + 20) * scale,
@@ -1737,7 +1760,7 @@ export class Renderer {
       16,
     );
     ctx.fill();
-    ctx.strokeStyle = 'rgba(60, 224, 255, 0.35)';
+    ctx.strokeStyle = withAlpha(this.theme.primary, 0.35);
     ctx.lineWidth = 1.5;
     ctx.stroke();
 
@@ -1755,13 +1778,44 @@ export class Renderer {
       ctx.fillText(`FINAL ${game.score.toLocaleString()}`, cx, cy + 4 * scale);
     }
 
+    // The machine picker. It uses the button hit-test, which sits above every
+    // play zone in the input's hit order, so choosing a table can never launch
+    // a ball or nudge the cabinet by accident.
+    const pickerY = cy + 14 * scale;
+    const arrowSpan = (PLAY_RIGHT - PLAY_LEFT - 40) * scale * 0.42;
+    ctx.fillStyle = this.theme.feature;
+    ctx.font = `700 ${Math.round(19 * scale)}px ui-monospace, Menlo, monospace`;
+    ctx.fillText(game.machine.name.toUpperCase(), cx, pickerY);
+    ctx.fillStyle = this.theme.textDim;
+    // Kept small and the taglines kept short: the arrows take the outer 16% of
+    // the card on each side, and a line that reaches them is a line that
+    // collides with them on a narrow screen.
+    ctx.font = `500 ${Math.round(10 * scale)}px ui-monospace, Menlo, monospace`;
+    ctx.fillText(game.machine.tagline, cx, pickerY + 18 * scale);
+
+    for (const [id, dx, glyph] of [
+      ['machine-prev', -arrowSpan, '\u2039'],
+      ['machine-next', arrowSpan, '\u203a'],
+    ] as const) {
+      const bx = cx + dx;
+      const size = 30 * scale;
+      this.buttons.push({ id, x: bx - size / 2, y: pickerY - size * 0.72, w: size, h: size });
+      ctx.strokeStyle = withAlpha(this.theme.primary, 0.5);
+      ctx.lineWidth = 1.5;
+      roundRect(ctx, bx - size / 2, pickerY - size * 0.72, size, size, 8);
+      ctx.stroke();
+      ctx.fillStyle = this.theme.primary;
+      ctx.font = `700 ${Math.round(20 * scale)}px ui-monospace, Menlo, monospace`;
+      ctx.fillText(glyph, bx, pickerY - size * 0.06);
+    }
+
     ctx.fillStyle = this.theme.text;
     ctx.globalAlpha = 0.6 + Math.sin(time * 3) * 0.4;
     ctx.font = `600 ${Math.round(18 * scale)}px ui-monospace, Menlo, monospace`;
-    ctx.fillText('TAP OR PRESS ENTER', cx, cy + 44 * scale);
+    ctx.fillText('TAP OR PRESS ENTER', cx, cy + 66 * scale);
     ctx.globalAlpha = 1;
 
-    let cursor = cy + 84 * scale;
+    let cursor = cy + 106 * scale;
     if (board.length > 0) {
       cursor = this.drawScoreboard(ctx, game, cx, cursor, scale);
     }
@@ -1772,6 +1826,7 @@ export class Renderer {
     ctx.fillText('Tap left / right to flip', cx, cursor);
     ctx.fillText('Hold to draw the plunger', cx, cursor + 20 * scale);
     ctx.fillText('Buttons top right mute sound', cx, cursor + 40 * scale);
+    ctx.fillText('1 / 2 / 3 pick a machine', cx, cursor + 60 * scale);
     ctx.restore();
   }
 

@@ -1,6 +1,6 @@
 # Loopback Pinball
 
-A pinball table that runs in the browser on a phone or a desktop, with no
+Three pinball machines that run in the browser on a phone or a desktop, with no
 runtime dependencies, no image files and no audio files. Every pixel is drawn
 and every sound is synthesised as the game runs.
 
@@ -17,8 +17,10 @@ and every sound is synthesised as the game runs.
 | New game             | `Enter`                       | Tap the attract screen                 |
 | Sound effects on/off | `S`                           | Speaker button, top right              |
 | Music on/off         | `M`                           | Note button, top right                 |
+| Change machine       | `1` `2` `3`                   | `‹` `›` on the attract screen          |
 
-Both audio settings are remembered between visits.
+Both audio settings and the machine you last played are remembered between
+visits. `?machine=molten-core` opens a particular table directly.
 
 While the ball is in the air the flipper buttons also work as **lane change**,
 sliding the lit rollover lanes and the flashing skill lane sideways so you can
@@ -27,12 +29,25 @@ line up the one you still need.
 Nudging too often tilts the table and kills the flippers until the ball drains,
 exactly as it should.
 
-## The table
+## The machines
 
-Three pop bumpers under the dome, two slingshots, a three-bank of drop targets,
-five standup targets, a spinner in the left orbit lane, three rollover lanes
-across the top of the orbit, a mission saucer, a kickback guarding the right
-outlane, and a plastic ramp that returns the ball to the left inlane.
+Three tables, one rulebook. Each has its own playfield, its own palette and its
+own rank ladder, and each keeps its own scoreboard — a score is only meaningful
+against the layout it was set on.
+
+They share a chassis: the cabinet, the shooter lane, the apron and the whole
+lower third. That part of a real pinball table is near-universal, and it is
+also where the care went here — the drain gap falls out of the flipper pivot
+separation and the bat radius, and the apron, the lane gate and the shooter
+divider each close a specific pocket that used to trap balls. What a machine
+chooses is everything above the flippers.
+
+### Orbit Cadet
+
+Deep space, in cyan and violet. Three pop bumpers under the dome, a three-bank
+of drop targets on the left, five standup targets, a spinner in the left orbit
+lane, a mission saucer, and one long habitrail that returns the ball to the
+left inlane.
 
 The ramp forks. A diverter at its apex is normally closed, sending the ball the
 long way round to the inlane; thrown, it drops the ball out of a short tube
@@ -40,9 +55,36 @@ straight into the saucer. The blade is visible on the wireform and swings when
 the gate is armed, so which way the next ramp shot goes can be read off the
 table rather than off the display.
 
-The two sides are deliberately different. The left orbit is the safe shot: a
-one-way gate at the foot of its lane feeds returning balls back to the flippers.
-The right side keeps a live outlane, which is what the kickback is there for.
+### Molten Core
+
+A forge, in ember orange and raw steel. It is the table with no habitrail at
+all: nothing to ride and nothing to wait for. The playfield is spent on metal
+instead — four pop bumpers packed into a diamond that rattles a ball rather
+than passing it, an ore bank on the right, and five standups on the left.
+Handedness flips here: everything Orbit Cadet puts on one side, this puts on
+the other.
+
+### Tidewreck
+
+A drowned ship, in teal and coral. The open table of the three: it carries no
+posts at all, and its bumpers are strung in a row across the top of the dome so
+they deflect a ball onward instead of holding it. The cargo bank lies flat
+across the upper left where Orbit Cadet's stands on the diagonal, and the
+habitrail takes a lower, wider line over the top.
+
+### What they all share
+
+The two sides of every machine are deliberately different. The left orbit is
+the safe shot: a one-way gate at the foot of its lane feeds returning balls
+back to the flippers. The right keeps a live outlane, which is what the
+kickback is there for.
+
+That asymmetry is not a style choice, it is forced. The shooter lane is on the
+right on every table, so a launched ball goes up the right, over the dome and
+down the **left** — the left is where every ball begins its playfield life, so
+it has to be the side that feeds the ball back. A true mirror of the layout was
+built and measured: the ball spent 31% of its life pinned in the left gutter
+and reached the saucer zero times in twelve games.
 
 ## Scoring
 
@@ -57,7 +99,7 @@ Nothing on the table is worth a fixed amount for long.
   the chain multiplies every shot until the chain lapses.
 - **Frenzy** — clearing the standup targets doubles everything for eighteen
   seconds.
-- **Warp gate** — six spinner passes arm the diverter on the ramp. The next
+- **Warp gate** (Orbit Cadet) — six spinner passes arm the diverter on the ramp. The next
   ramp shot then pays 12,000 and forks into the saucer, taking a mission step
   or collecting multiball with it. It still counts as a ramp shot on the way
   past. Arming survives a drain but not a new game: a single ball reaches the
@@ -83,8 +125,9 @@ drains.
 
 ## The scoreboard
 
-The best five games are kept, with the rank reached and the date, and shown on
-the attract screen. It is a local scoreboard in the strict sense: it lives in
+The best five games are kept **per machine**, with the rank reached and the
+date, and shown on the attract screen for whichever table is selected. Scores
+are not comparable across layouts, so they are not pooled. It is a local scoreboard in the strict sense: it lives in
 this browser's storage, it is never sent anywhere, and clearing site data
 clears it.
 

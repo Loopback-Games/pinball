@@ -232,6 +232,7 @@ export interface Table {
   saucer: { center: Vec2; radius: number };
   /** What the saucer is called on this machine, printed under the cup. */
   saucerLabel: string;
+
   /**
    * Path a captured ball follows along the habitrail, entry first.
    *
@@ -315,6 +316,20 @@ export function buildChassis(): Chassis {
     ),
   );
 
+  // The shooter lane is on the right on every machine, and that fixes more of
+  // the design than it looks like it does. A launched ball goes up the right,
+  // over the dome and down the LEFT, so the left is where every ball begins
+  // its playfield life. That side has to be the safe one — a lane wall and a
+  // one-way gate at its foot, feeding returns to the flippers — and the live
+  // outlane has to be the right.
+  //
+  // A machine was built as a true mirror of that, gate on the right and
+  // kickback on the left, and it failed on the table rather than in principle:
+  // the ball spent 31% of its life pinned in the left gutter, reached the
+  // saucer zero times in twelve games, and every ball drained inside the ball
+  // save. Handedness on this cabinet is a property of the target banks and the
+  // shot layout, not of the orbit.
+  //
   // One-way gate at the top of the shooter lane. Its normal faces up, so it
   // only exists for a ball coming down from the dome: a launched ball passes
   // straight through, and nothing ever falls back into the lane.

@@ -308,7 +308,7 @@ export class Game {
         confinedTime: 0,
       });
     }
-    this.scoreboard = readScoreboard();
+    this.scoreboard = readScoreboard(machine.id);
   }
 
   get balls(): readonly BallEntry[] {
@@ -865,8 +865,9 @@ export class Game {
     if (id === 'outlane-left' || id === 'outlane-right') {
       this.lamps.set(id, 1);
       this.bonusUnits += 2;
-      // The kickback guards the right outlane, which is the live one: the
-      // gate at the foot of the left orbit lane makes that side a return.
+      // The kickback guards the right outlane, which is the live one on every
+      // machine: the shooter lane is on the right, so a launch lands on the
+      // left, so the left is the side that has to feed the ball back safely.
       if (id === 'outlane-right' && this.kickbackLit && entry.mode === 'play') {
         this.kickbackLit = false;
         // Aimed up and into the playfield rather than straight back up the
@@ -1216,7 +1217,7 @@ export class Game {
       this.phase = 'gameOver';
       this.attractTimer = 0;
       this.onSound('gameOver', 1);
-      const { board, position } = recordScore({
+      const { board, position } = recordScore(this.machine.id, {
         score: this.score,
         rank: this.rank,
         date: today(),

@@ -284,7 +284,7 @@ const MISSIONS: readonly MissionSpec[] = [
 export const ORBIT_CADET: Machine = {
   id: 'orbit-cadet',
   name: 'Orbit Cadet',
-  tagline: 'Deep space. One long rail and a diverter that warps you home.',
+  tagline: 'One long rail, and a warp that forks it.',
   theme: ORBIT_THEME,
   ranks: ['Cadet', 'Ensign', 'Lieutenant', 'Commander', 'Captain', 'Admiral'],
   missions: MISSIONS,

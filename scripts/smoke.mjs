@@ -220,6 +220,80 @@ for (const vp of VIEWPORTS) {
   await page.close();
 }
 
+// Every machine has to boot, launch a ball and score on it. The unit suites
+// prove each layout is playable in the simulation; this is the only thing that
+// proves the one the player actually loads is the one that was tested, and
+// that switching between them does not leave a stale table on screen.
+{
+  const page = await browser.newPage({ viewport: { width: 900, height: 1100 } });
+  page.on('pageerror', (e) => problems.push(`machines: pageerror: ${e.message}`));
+  page.on('console', (m) => {
+    if (m.type() === 'error') problems.push(`machines: console: ${m.text()}`);
+  });
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(400);
+  const ids = await page.evaluate(() => globalThis.pinball.machines());
+  if (ids.length < 2) problems.push(`only ${ids.length} machine(s) registered`);
+
+  for (const id of ids) {
+    await page.goto(`${url}?machine=${id}`, { waitUntil: 'load' });
+    await page.waitForTimeout(350);
+    const loaded = await page.evaluate(() => globalThis.pinball.machine.id);
+    if (loaded !== id) {
+      problems.push(`?machine=${id} loaded ${loaded}`);
+      continue;
+    }
+    await page.keyboard.press('Enter');
+    await page.waitForTimeout(200);
+    await page.keyboard.down('Space');
+    await page.waitForTimeout(700);
+    await page.keyboard.up('Space');
+    await page.waitForTimeout(2200);
+    const state = await page.evaluate(() => {
+      const g = globalThis.pinball;
+      return {
+        phase: g.phase,
+        score: g.score,
+        rank: g.rank,
+        features: {
+          bumpers: g.table.bumpers.length,
+          targets: g.table.dropTargets.length + g.table.standupTargets.length,
+          ramp: Boolean(g.table.rampPath),
+        },
+        positions: g.balls
+          .filter((b) => b.mode !== 'idle')
+          .map((b) => ({ x: Math.round(b.ball.pos.x), y: Math.round(b.ball.pos.y) })),
+      };
+    });
+    const f = state.features;
+    console.log(
+      `${id}: ${state.rank} ${state.score} pts, ` +
+        `${f.bumpers} bumpers, ${f.targets} targets, ramp=${f.ramp}`,
+    );
+    if (state.phase === 'attract') problems.push(`${id}: game never started`);
+    if (state.score <= 0) problems.push(`${id}: never scored a point`);
+    for (const q of state.positions) {
+      if (q.x < -20 || q.x > 620 || q.y < -20 || q.y > 1020) {
+        problems.push(`${id}: ball escaped the table at ${q.x},${q.y}`);
+      }
+    }
+  }
+
+  // Switching in the running page, rather than by URL, is the path the picker
+  // takes. It has to rebuild the game and repaint the cached static layer.
+  await page.goto(url, { waitUntil: 'load' });
+  await page.waitForTimeout(300);
+  const before = await page.evaluate(() => globalThis.pinball.machine.id);
+  await page.evaluate((next) => globalThis.pinball.selectMachine(next), ids[ids.length - 1]);
+  await page.waitForTimeout(300);
+  const after = await page.evaluate(() => globalThis.pinball.machine.id);
+  console.log(`picker: ${before} -> ${after}`);
+  if (after === before || after !== ids[ids.length - 1]) {
+    problems.push(`picker did not switch machine (${before} -> ${after})`);
+  }
+  await page.close();
+}
+
 await browser.close();
 
 if (problems.length) {
@@ -227,6 +301,6 @@ if (problems.length) {
   console.error('\nProblems:');
   for (const p of problems) console.error('  ' + p);
 } else {
-  console.log('\nNo console errors, no escaped balls, game started at every size.');
+  console.log('\nNo console errors, no escaped balls, every machine booted and scored.');
 }
 process.exit(failed ? 1 : 0);

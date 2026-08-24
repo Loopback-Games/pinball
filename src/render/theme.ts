@@ -41,6 +41,16 @@ export interface Theme {
   holeRim: string;
   /** Faint printing on the playfield — guide rings and the like. */
   print: string;
+  /** Midpoint of the playfield gradient, between top and bottom. */
+  playfieldMid: string;
+  /**
+   * The wash behind the upper playfield, and the flecks scattered over the
+   * whole of it: a nebula and stars on one machine, a furnace glow and embers
+   * on the next. Left as a space nebula on every table, the art contradicted
+   * three quarters of the machines it was painted on.
+   */
+  wash: string;
+  fleck: string;
 }
 
 /**
@@ -83,6 +93,9 @@ export const ORBIT_THEME: Theme = {
   holeMid: '#05070f',
   holeRim: '#121a30',
   print: '#78b4ff',
+  playfieldMid: '#0a1229',
+  wash: '#5a3cc8',
+  fleck: '#ffffff',
 };
 
 /**
@@ -115,6 +128,9 @@ export const MOLTEN_THEME: Theme = {
   holeMid: '#0a0402',
   holeRim: '#3a1608',
   print: '#ff8a2b',
+  playfieldMid: '#1b0a05',
+  wash: '#ff5a18',
+  fleck: '#ffd9a8',
 };
 
 /** A drowned wreck: teal water, coral growth and brass lanterns. */
@@ -141,6 +157,9 @@ export const TIDE_THEME: Theme = {
   holeMid: '#010708',
   holeRim: '#0d3236',
   print: '#2fd9c8',
+  playfieldMid: '#052024',
+  wash: '#128a8a',
+  fleck: '#cdfffa',
 };
 
 /** Deterministic pseudo-randomness, so the decorative art never shifts. */
