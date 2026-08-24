@@ -9,7 +9,10 @@ if (!(element instanceof HTMLCanvasElement)) {
 }
 const canvas: HTMLCanvasElement = element;
 
-const game = new Game();
+// The table only rolls dice to shake a wedged ball loose, but a real session
+// should not repeat the same nudge every game. Tests take the default seed and
+// replay exactly; a player gets a different one every time the page loads.
+const game = new Game(Date.now() & 0xffffffff);
 const renderer = new Renderer(canvas);
 const audio = new Audio();
 game.onSound = (name, intensity) => audio.play(name, intensity);

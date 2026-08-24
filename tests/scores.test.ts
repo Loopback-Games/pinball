@@ -97,3 +97,42 @@ describe('the local scoreboard', () => {
     });
   });
 });
+
+const GOOD = { score: 1000, rank: 'Cadet', date: '2026-08-24' };
+
+describe('a doctored board', () => {
+  it('drops a score too large to be real', () => {
+    storage.setItem(
+      'loopback-pinball-scores',
+      JSON.stringify([{ score: 1e30, rank: 'Admiral', date: '2026-08-24' }, GOOD]),
+    );
+    expect(readScoreboard()).toEqual([GOOD]);
+  });
+
+  it('drops a date that is not a date', () => {
+    storage.setItem(
+      'loopback-pinball-scores',
+      JSON.stringify([{ score: 500, rank: 'Cadet', date: 'see http://example.com for more' }]),
+    );
+    expect(readScoreboard()).toEqual([{ score: 500, rank: 'Cadet', date: '' }]);
+  });
+
+  it('does not sort a million entries to keep five', () => {
+    const many = Array.from({ length: 5000 }, (_, i) => ({
+      score: i + 1,
+      rank: 'Cadet',
+      date: '2026-08-24',
+    }));
+    storage.setItem('loopback-pinball-scores', JSON.stringify(many));
+    const board = readScoreboard();
+    expect(board).toHaveLength(5);
+    // Only the first hundred are looked at, so the best of those wins rather
+    // than the best of all five thousand.
+    expect(board[0]?.score).toBe(100);
+  });
+
+  it('does not migrate a legacy high score that is out of range', () => {
+    storage.setItem('loopback-pinball-high-score', '999999999999999999999');
+    expect(readScoreboard()).toEqual([]);
+  });
+});

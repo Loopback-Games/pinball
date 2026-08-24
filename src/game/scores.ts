@@ -22,6 +22,20 @@ const LEGACY_KEY = 'loopback-pinball-high-score';
 
 /** Longest rank string worth keeping, so a doctored entry cannot bloat the UI. */
 const MAX_RANK = 24;
+/**
+ * Highest score worth believing. Past this the number stops being exact in a
+ * double and starts being wide enough to run off the side of the board.
+ */
+const MAX_SCORE = Number.MAX_SAFE_INTEGER;
+/**
+ * Most stored entries to even look at. The board keeps five; anything longer
+ * than this was not written by the game, and there is no reason to sort a
+ * million of them before finding that out.
+ */
+const MAX_STORED = 100;
+
+/** An ISO day and nothing else, so the date column cannot be made to say anything. */
+const ISO_DAY = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
  * Parse one stored entry.
@@ -34,13 +48,14 @@ function parseEntry(value: unknown): ScoreEntry | null {
   if (typeof value !== 'object' || value === null) return null;
   const record = value as Record<string, unknown>;
   const score = record['score'];
-  if (typeof score !== 'number' || !Number.isFinite(score) || score <= 0) return null;
+  if (typeof score !== 'number' || !Number.isFinite(score)) return null;
+  if (score <= 0 || score > MAX_SCORE) return null;
   const rank = typeof record['rank'] === 'string' ? record['rank'] : '';
   const date = typeof record['date'] === 'string' ? record['date'] : '';
   return {
     score: Math.floor(score),
     rank: rank.slice(0, MAX_RANK),
-    date: date.slice(0, 10),
+    date: ISO_DAY.test(date) ? date : '',
   };
 }
 
@@ -56,6 +71,7 @@ export function readScoreboard(): ScoreEntry[] {
       const parsed: unknown = JSON.parse(raw);
       if (!Array.isArray(parsed)) return [];
       return parsed
+        .slice(0, MAX_STORED)
         .map(parseEntry)
         .filter((e): e is ScoreEntry => e !== null)
         .sort(byScore)
@@ -63,11 +79,12 @@ export function readScoreboard(): ScoreEntry[] {
     }
     // No board yet: carry over the single high score kept by older versions so
     // nobody loses the one number the game used to remember.
-    const legacy = Number.parseInt(storage.getItem(LEGACY_KEY) ?? '', 10);
-    if (Number.isFinite(legacy) && legacy > 0) {
-      return [{ score: legacy, rank: '', date: '' }];
-    }
-    return [];
+    const legacy = parseEntry({
+      score: Number.parseInt(storage.getItem(LEGACY_KEY) ?? '', 10),
+      rank: '',
+      date: '',
+    });
+    return legacy ? [legacy] : [];
   } catch {
     // Private browsing, blocked storage, or something that is not JSON at all.
     return [];
