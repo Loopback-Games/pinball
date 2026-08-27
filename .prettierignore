@@ -3,3 +3,8 @@ node_modules/
 screenshots/
 package-lock.json
 coverage/
+
+# yamllint --strict owns these, and the two tools disagree: prettier collapses
+# the two spaces before an inline comment that yamllint requires. One formatter
+# per file, so the workflows belong to the linter that also validates them.
+.github/
