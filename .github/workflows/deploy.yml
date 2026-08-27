@@ -20,7 +20,7 @@ concurrency:
 jobs:
   build:
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 25
     permissions:
       contents: read
       pages: write
@@ -31,35 +31,53 @@ jobs:
           # The build never pushes, so leaving a credential in .git/config for
           # everything downstream to pick up buys nothing.
           persist-credentials: false
-      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
-        with:
-          node-version: 24
-          cache: npm
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm run fmt:check
-      # Fails the build on a high or critical advisory in the toolchain. The
-      # shipped bundle has no dependencies, but everything that produces it
-      # does.
-      - run: npm run security
-      - run: npm test
-      - run: npm run build
+          # gitleaks reads the history, not the tree: a key that was committed
+          # and then deleted is still a key that was published.
+          fetch-depth: 0
 
-      # Drive the built game in a real browser. The unit tests cannot see the
-      # canvas, the input handling or the page boot, and a bug in any of those
-      # ships a blank screen with every test passing.
-      - run: npx playwright install --with-deps chromium
-      - name: Smoke test the built game
-        run: |
-          npx vite preview --port 4173 --strictPort &
-          npx wait-on -t 60000 http://localhost:4173/
-          node scripts/smoke.mjs http://localhost:4173/ screenshots
+      # The toolchain, from mise.toml. There is deliberately no node version
+      # named here — doing that is how this repository ended up testing on 24
+      # while it was written on 26. The action caches the tools it installs and
+      # exports mise's PATH to the steps below, which is what makes `just`
+      # resolvable without any further setup.
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+
+      # mise caches the tools; these cache what the tools download. Both keyed
+      # on the lockfile, because that is what decides the contents of each: the
+      # Playwright version lives in it too, so a bump invalidates the browser.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.npm
+          key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: npm-${{ runner.os }}-
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: playwright-${{ runner.os }}-
+
+      # Everything: install, lint, audit, test, build, and the smoke test that
+      # drives the built bundle in a real browser. This is the same recipe a
+      # laptop runs, which is the point — there is no list of steps in this
+      # file that can drift from the justfile. A check that is not reachable
+      # from `just ci` is a check that only ever runs on a runner.
+      #
+      # BASE_PATH is set here rather than sniffed inside vite.config.ts, so the
+      # bundle CI deploys is a deliberate artifact and the same command
+      # produces the root-served one locally.
+      - run: just ci
+        env:
+          BASE_PATH: /${{ github.event.repository.name }}/
+
       - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         if: always()
         with:
           name: screenshots
           path: screenshots
           retention-days: 7
+          # An earlier gate failing means the smoke test never ran and there is
+          # nothing to upload, which is not itself a failure.
+          if-no-files-found: ignore
 
       # A pull request gets every check above and stops there. Only a push to
       # main produces a deployable artifact.
