@@ -28,18 +28,19 @@ default:
 # Everything a fresh clone needs before it can run anything else.
 setup: install browsers
 
-# Install the pinned toolchain and the exact tree the lockfile describes.
-#
 # npm ci rather than npm install: it installs precisely what the lockfile says
 # and refuses to rewrite it, which is the difference between the tree CI tested
 # and one that happens to resolve the same way today. Moving a dependency on
 # purpose is `just update`.
+
+# Install the pinned toolchain and the exact tree the lockfile describes.
 install:
     mise install
     npm ci
 
-# Re-resolve the dependency tree and write the lockfile. The only recipe that
-# is allowed to change package-lock.json.
+# The only recipe that is allowed to change package-lock.json.
+
+# Re-resolve the dependency tree and write the lockfile.
 update:
     npm install
 
@@ -67,20 +68,27 @@ security:
     osv-scanner scan source --lockfile package-lock.json
     gitleaks git . --no-banner --redact
 
-# Run the unit tests.
-test:
+# Depends on the browser because one of the two projects runs in it. Getting
+# that wrong is invisible on a machine that already has Chromium and fails on
+# a fresh runner, which is exactly how it was found.
+
+# Run the unit tests, in node and in a browser.
+test: browsers
     vitest run
 
-# Run the unit tests in watch mode.
-watch:
-    vitest
+# The node project only: the browser one needs a browser process per run, and
+# this is the recipe you leave running.
 
-# Run the tests with coverage, and fail under the threshold.
-#
+# Watch the node tests.
+watch:
+    vitest --project node
+
 # Kept out of `check` on purpose: instrumenting the fuzz suites takes the run
 # from forty seconds to three minutes, which is too slow for the loop you run
 # before every push. `ci` uses this one, so nothing merges without it.
-coverage:
+
+# Run the tests with coverage, and fail under the threshold.
+coverage: browsers
     vitest run --coverage
 
 # Build the production bundle into dist/.
@@ -93,12 +101,15 @@ run:
     vite
 
 # The OS libraries have to come from somewhere, and `--with-deps` installs
-# them through apt — so it works on the Ubuntu runner and fails outright on a
-# Fedora host. Detected rather than passed in, so that `just ci` is the same
-# command everywhere and the platform difference lives in the one place it is
-# actually true.
+# them through apt — so it works on the Ubuntu runner and in the devcontainer,
+# and fails outright on a Fedora host. Detected rather than passed in, so that
+# `just ci` is the same command everywhere and the platform difference lives in
+# the one place it is actually true.
+#
+# A no-op once the browser is on the machine, so it is cheap enough to be a
+# dependency of everything that needs one.
 
-# Fetch the browser the smoke test drives.
+# Fetch the browser the tests and the smoke test drive.
 browsers:
     #!/usr/bin/env bash
     set -euo pipefail
@@ -135,16 +146,17 @@ smoke: build browsers
 # Everything, from a clean checkout, exactly as CI runs it.
 ci: install lint security coverage build smoke
 
-# The same gates as `ci`, minus the provisioning and the coverage pass, for a
-# quick loop before pushing.
+# The same gates as `ci`, minus the provisioning and the coverage pass.
+
+# Every gate, for a quick loop before pushing.
 check: lint security test build smoke
 
-# Run the full gate inside the devcontainer.
-#
 # The point of this recipe is that it proves the claim: the same `just ci`, on
 # a machine that is neither this laptop nor the runner, from the same
 # mise.toml. If it passes here and on a laptop, CI is not going to surprise
 # anyone.
+
+# Run the full gate inside the devcontainer.
 container:
     devcontainer up --docker-path podman --workspace-folder .
     devcontainer exec --docker-path podman --workspace-folder . just ci
