@@ -185,13 +185,19 @@ just run       # dev server with hot reload
 just fmt       # format everything
 just lint      # typecheck and check formatting
 just test      # unit tests
-just security  # audit the toolchain, twice
-just check     # everything CI runs
+just security  # audit the tree twice, and scan the history for secrets
 just smoke     # build, then drive the real game in a browser
+just check     # every gate, against the environment you have
+just ci        # provision the environment first, then check. What CI runs.
 ```
 
-Without `just`, the same commands are `npm install`, `npm run dev`, `npm test`,
-and `npm run build`.
+The toolchain itself comes from [mise](https://mise.jdx.dev): `mise install`
+gets the pinned Node, `just`, and the two scanners. `mise.toml` is the only
+place a version is written down — not the workflow, and not a `.nvmrc`.
+
+`just ci` is the whole of the CI script. The workflow checks out, installs
+mise, runs it, and uploads what it produced; there is no list of steps in the
+workflow that can drift from this one.
 
 ## How it is built
 

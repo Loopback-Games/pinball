@@ -6,21 +6,13 @@
   "description": "A browser pinball game built from procedurally generated assets",
   "license": "MIT",
   "engines": {
-    "node": ">=22.12"
+    "node": ">=24"
   },
   "scripts": {
-    "build": "tsc --noEmit && vite build",
-    "dev": "vite",
-    "fmt": "prettier --write .",
-    "fmt:check": "prettier --check .",
-    "preview": "vite preview",
-    "security": "npm audit --audit-level=high",
-    "test": "vitest run",
-    "test:watch": "vitest",
-    "typecheck": "tsc --noEmit"
+    "dev": "vite"
   },
   "devDependencies": {
-    "@types/node": "^26.2.0",
+    "@types/node": "^24.13.3",
     "playwright": "^1.62.1",
     "prettier": "3.9.6",
     "typescript": "^7.0.2",

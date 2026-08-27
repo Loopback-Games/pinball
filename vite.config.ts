@@ -3,11 +3,15 @@ import { defineConfig } from 'vitest/config';
 // Project pages are served from https://<org>.github.io/<repo>/, so every asset
 // URL needs the repository name as a prefix. Local dev serves from the root.
 //
-// Taken from the repository the workflow is actually running in rather than
-// hardcoded, so a fork under another name builds a working site instead of one
-// that 404s on its own bundle.
-const repository = process.env.GITHUB_REPOSITORY?.split('/')[1];
-const base = process.env.GITHUB_ACTIONS && repository ? `/${repository}/` : '/';
+// Passed in rather than sniffed from GITHUB_ACTIONS, which used to mean a
+// build produced a different bundle depending on where it ran — so "the same
+// command locally and in CI" quietly was not. The justfile owns the default
+// and CI sets it deliberately.
+//
+// The workflow derives it from the repository it is running in rather than
+// hardcoding a name, so a fork under another name still builds a working site
+// instead of one that 404s on its own bundle.
+const base = process.env.BASE_PATH || '/';
 
 export default defineConfig({
   base,
