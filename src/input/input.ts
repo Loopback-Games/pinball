@@ -171,7 +171,16 @@ export class Input {
 
   private readonly onPointerDown = (e: PointerEvent): void => {
     this.gesture();
-    this.canvas.setPointerCapture?.(e.pointerId);
+    // Capture keeps the pointer reporting to the canvas once a thumb slides
+    // off it, which is most of what makes a flipper hold. It is also the
+    // least important thing this handler does: it throws if the pointer is
+    // already gone, and losing the flip because the capture failed is worse
+    // than not capturing.
+    try {
+      this.canvas.setPointerCapture?.(e.pointerId);
+    } catch {
+      // Nothing to do about it, and nothing that depends on it.
+    }
     // Buttons win over every play zone, so a thumb reaching for the mute
     // control never nudges the table instead.
     const rect = this.canvas.getBoundingClientRect();
