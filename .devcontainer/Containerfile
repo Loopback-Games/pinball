@@ -1,0 +1,39 @@
+# The development image: Playwright's official image plus mise.
+#
+# The base is what CI runs the suite in as well, so the browsers, the system
+# libraries behind them and the Node major are identical in both places. That
+# is the whole point of building on it rather than on a generic base and
+# installing browsers afterwards: `playwright install --with-deps` is the step
+# most likely to differ between a laptop and a runner, so it happens in neither.
+#
+# Pinned by digest. The tag must match the `playwright` version in package.json
+# — this project drives the browser through @vitest/browser-playwright and the
+# smoke test, so it depends on `playwright` rather than @playwright/test — or
+# Playwright cannot find its browsers at all. `just lint-versions` fails the
+# build if they drift apart.
+FROM mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+
+# mise from its own signed apt repository, which is what extrepo would enable
+# if extrepo carried a policy for Ubuntu — it only has Debian suites — and a
+# better answer than piping https://mise.run into a shell. The repository
+# publishes one version at a time, so mise itself floats; everything mise
+# installs is exact-pinned in mise.toml, which is where reproducibility
+# actually lives.
+RUN mkdir -p /etc/apt/keyrings \
+    && curl -fsSL https://mise.jdx.dev/gpg-key.pub \
+        | gpg --dearmor -o /etc/apt/keyrings/mise-archive-keyring.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/mise-archive-keyring.gpg] https://mise.jdx.dev/deb stable main" \
+        > /etc/apt/sources.list.d/mise.list \
+    && apt-get update \
+    && apt-get install -y --no-install-recommends mise \
+    && rm -rf /var/lib/apt/lists/* \
+    && mise --version
+
+# Shims rather than shell activation: a devcontainer runs plenty of
+# non-interactive shells, and none of them source a profile.
+ENV PATH="/root/.local/share/mise/shims:${PATH}"
+
+# Root, deliberately. Rootless podman maps container uid 0 to the host user, so
+# files written to the bind mount come back owned correctly without
+# --userns=keep-id, which is only needed to run as a non-root uid.
+WORKDIR /workspaces/pinball

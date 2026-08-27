@@ -21,3 +21,20 @@ just = "1.58.0"
 # present everywhere, which is the point of the recipe.
 gitleaks = "8.30.1"
 osv-scanner = "2.5.1"
+
+# Nothing in this repository ever looked at a workflow file, which is a gap the
+# sibling repositories had already closed. actionlint parses them, zizmor audits
+# them for the Actions-specific problems, and yamllint holds the formatting the
+# other two do not care about.
+actionlint = "1.7.12"
+zizmor = "1.29.0"
+
+# uv is here to serve the pipx backend below, which has no packaged binary to
+# fetch. Without it a clean machine fails at "pipx is required to install
+# pipx:yamllint but was not found".
+uv = "0.12.6"
+"pipx:yamllint" = "1.38.0"
+
+[settings]
+# The pipx backend goes through uv rather than needing a pipx of its own.
+pipx.uvx = true
