@@ -183,7 +183,7 @@ separate gain buses, which is what lets either be silenced on its own.
 just setup     # install dependencies
 just run       # dev server with hot reload
 just fmt       # format everything
-just lint      # typecheck and check formatting
+just lint      # typecheck, formatting, and the workflows
 just test      # unit tests
 just security  # audit the tree twice, and scan the history for secrets
 just smoke     # build, then drive the real game in a browser
@@ -196,11 +196,13 @@ gets the pinned Node, `just`, the two scanners, the dependency tree and the
 browser the smoke test drives. `mise.toml` is the only place a version is
 written down — not the workflow, and not a `.nvmrc`.
 
-There is a devcontainer for anyone who would rather not install any of that.
-It is a thin image over mise, so it reads the same `mise.toml` as the host and
-the runner do. `just container` builds it and runs the whole gate inside it,
-which is the useful thing about it: the same `just ci` on a third machine that
-is neither this laptop nor GitHub's.
+There is a devcontainer for anyone who would rather not install any of that. It
+builds on Playwright's official image, which is also the container CI runs the
+suite in, so the browser and the system libraries behind it are identical in
+both places — the parity the old Debian-based image claimed and could not
+deliver while CI installed its own browser on a bare runner. `just container`
+runs the whole gate inside it: the same `just ci` on a third machine that is
+neither this laptop nor GitHub's.
 
 `just ci` is the whole of the CI script. The workflow checks out, installs
 mise, runs it, and uploads what it produced; there is no list of steps in the
