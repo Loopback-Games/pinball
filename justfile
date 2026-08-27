@@ -65,6 +65,14 @@ test:
 watch:
     vitest
 
+# Run the tests with coverage, and fail under the threshold.
+#
+# Kept out of `check` on purpose: instrumenting the fuzz suites takes the run
+# from forty seconds to three minutes, which is too slow for the loop you run
+# before every push. `ci` uses this one, so nothing merges without it.
+coverage:
+    vitest run --coverage
+
 # Build the production bundle into dist/.
 build:
     tsc --noEmit
@@ -115,10 +123,11 @@ smoke: build browsers
     node scripts/smoke.mjs http://localhost:{{ preview_port }}/ screenshots
 
 # Everything, from a clean checkout, exactly as CI runs it.
-ci: install lint security test build smoke
+ci: install lint security coverage build smoke
 
-# Everything except the browser, for a quick loop before pushing.
-check: lint security test build
+# The same gates as `ci`, minus the provisioning and the coverage pass, for a
+# quick loop before pushing.
+check: lint security test build smoke
 
 # Remove build output and installed packages.
 clean:

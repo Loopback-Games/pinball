@@ -20,6 +20,19 @@ export default defineConfig({
     assetsInlineLimit: 0,
   },
   test: {
+    coverage: {
+      provider: 'v8',
+      reporter: ['text-summary', 'html', 'lcov'],
+      // v8 only reports on files it saw imported, which is how four of the
+      // five largest files here sat at zero without anyone noticing. Naming
+      // the source tree makes an untested file show up as an untested file
+      // rather than not show up at all.
+      //
+      // `coverage.all` was the option that did this before Vitest 4 removed
+      // it; `include` is the replacement and its default is "whatever the run
+      // happened to import".
+      include: ['src/**/*.ts'],
+    },
     environment: 'node',
     include: ['tests/**/*.test.ts'],
     // The containment fuzz and shot-reachability suites each run thousands of
