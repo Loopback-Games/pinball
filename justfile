@@ -25,13 +25,23 @@ preview_port := "4173"
 default:
     @just --list
 
-# Install dependencies for day-to-day work.
-setup:
-    npm install
+# Everything a fresh clone needs before it can run anything else.
+setup: install browsers
 
-# Install dependencies exactly as the lockfile pins them.
+# Install the pinned toolchain and the exact tree the lockfile describes.
+#
+# npm ci rather than npm install: it installs precisely what the lockfile says
+# and refuses to rewrite it, which is the difference between the tree CI tested
+# and one that happens to resolve the same way today. Moving a dependency on
+# purpose is `just update`.
 install:
+    mise install
     npm ci
+
+# Re-resolve the dependency tree and write the lockfile. The only recipe that
+# is allowed to change package-lock.json.
+update:
+    npm install
 
 # Format every file in place.
 fmt:
@@ -128,6 +138,16 @@ ci: install lint security coverage build smoke
 # The same gates as `ci`, minus the provisioning and the coverage pass, for a
 # quick loop before pushing.
 check: lint security test build smoke
+
+# Run the full gate inside the devcontainer.
+#
+# The point of this recipe is that it proves the claim: the same `just ci`, on
+# a machine that is neither this laptop nor the runner, from the same
+# mise.toml. If it passes here and on a laptop, CI is not going to surprise
+# anyone.
+container:
+    devcontainer up --docker-path podman --workspace-folder .
+    devcontainer exec --docker-path podman --workspace-folder . just ci
 
 # Remove build output and installed packages.
 clean:

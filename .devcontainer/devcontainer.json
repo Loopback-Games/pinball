@@ -1,0 +1,42 @@
+{
+  "name": "loopback-pinball",
+  "build": { "dockerfile": "Dockerfile" },
+  "remoteUser": "vscode",
+
+  // Rootless podman already maps the host user into the container, and the
+  // devcontainer tooling's own attempt to chown the remote user to match
+  // fights that mapping and leaves the workspace unwritable.
+  "updateRemoteUserUID": false,
+
+  "runArgs": [
+    // Host uid 1000 becomes container uid 1000, which is `vscode`, so a file
+    // written in here belongs to the developer out there.
+    "--userns=keep-id",
+    // The workspace bind mount carries a host SELinux label that podman can
+    // only honour by relabelling the source tree, which is not its to relabel.
+    "--security-opt=label=disable"
+  ],
+
+  // mise will not read a config it has not been told to trust, and there is
+  // nobody in here to answer the prompt.
+  "containerEnv": {
+    "MISE_TRUSTED_CONFIG_PATHS": "${containerWorkspaceFolder}"
+  },
+
+  // mise first and by name, because `just` is itself one of the tools mise
+  // installs — the shims it would be found through do not exist until this has
+  // run once. After that `just setup` gets the dependency tree and the
+  // browser, and inside a Debian container the browser step takes the apt path
+  // because apt-get and passwordless sudo are both here.
+  "postCreateCommand": "mise install && just setup",
+
+  "customizations": {
+    "vscode": {
+      "extensions": ["esbenp.prettier-vscode", "vitest.explorer", "nefrob.vscode-just-syntax"],
+      "settings": {
+        "editor.formatOnSave": true,
+        "editor.defaultFormatter": "esbenp.prettier-vscode"
+      }
+    }
+  }
+}
