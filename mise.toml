@@ -1,0 +1,23 @@
+# The toolchain, in one place.
+#
+# Before this file there were three answers to "which Node does this project
+# use": package.json said >= 22.12, the CI workflow installed 24, and the
+# machine it was written on ran 26. Nothing reconciled them, and @types/node
+# was a major ahead of the runtime CI actually ran. This is the answer now, and
+# the host, the devcontainer and CI all read it.
+#
+# Versions are exact rather than ranges. A range is how three machines end up
+# disagreeing again, and Dependabot has no opinion about this file, so the only
+# thing keeping it current is someone deciding to move it.
+
+[tools]
+# Matches what CI has been running and passing on. Everything else follows it:
+# package.json engines, and @types/node.
+node = "24.20.0"
+just = "1.58.0"
+# Both of these were optional before — the justfile skipped osv-scanner when it
+# was missing, and CI never ran it at all, so the second opinion the security
+# recipe is named for was usually not happening. Pinning them here makes them
+# present everywhere, which is the point of the recipe.
+gitleaks = "8.30.1"
+osv-scanner = "2.5.1"
