@@ -1,0 +1,13 @@
+extends: default
+
+rules:
+  # A workflow file is a fragment of GitHub's configuration, not a standalone
+  # document, and none of them carry a `---`.
+  document-start: disable
+  # A digest-pinned image reference is a single unwrappable token and
+  # already runs past 120 on its own.
+  line-length:
+    max: 140
+  # `on:` is the Actions trigger key, not the boolean.
+  truthy:
+    check-keys: false

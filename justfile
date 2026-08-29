@@ -9,7 +9,9 @@
 # globally. That was not academic: before this line, `just lint` was resolving
 # tsc to a Homebrew copy, and the version it agreed with the project on was a
 # coincidence rather than a guarantee.
-export PATH := justfile_directory() / "node_modules/.bin:" + env_var("PATH")
+set shell := ["bash", "-euo", "pipefail", "-c"]
+
+export PATH := justfile_directory() / "node_modules/.bin" + ":" + (env("HOME") / ".local/share/mise/shims") + ":" + env("PATH")
 
 # Where the built site will be served from. GitHub Pages serves a project site
 # under /<repo>/, so CI overrides this; a local build serves from the root.
@@ -48,10 +50,46 @@ update:
 fmt:
     prettier --write .
 
-# Typecheck the project and check formatting.
-lint:
+# Typecheck the project, check formatting, and lint the configuration.
+lint: lint-config
     tsc --noEmit
     prettier --check .
+
+# No "not installed, skipping" guards. actionlint and zizmor come from
+# mise.toml, so they are always present, and a lint that quietly passes when the
+# linter is missing is worse than no lint at all. Nothing here looked at a
+# workflow file before.
+
+# Workflows and the YAML around them.
+lint-config:
+    actionlint
+    zizmor --min-severity low .github/workflows
+    yamllint --strict .github .yamllint
+
+# Dependabot bumps the playwright package and knows nothing about the container
+# tag. A mismatch is not a warning: Playwright cannot find its browsers at all.
+#
+# `playwright`, not `@playwright/test`: this project drives the browser through
+# @vitest/browser-playwright and the smoke test.
+
+# Fail if the Playwright image and the Playwright package have drifted apart.
+lint-versions:
+    #!/usr/bin/env bash
+    set -euo pipefail
+    want="$(node -p "require('playwright/package.json').version")"
+    ok=1
+    for f in .devcontainer/Containerfile .github/workflows/deploy.yml; do
+        got="$(sed -n 's|.*mcr\.microsoft\.com/playwright:v\([0-9][0-9.]*\)-noble.*|\1|p' "$f" | head -1)"
+        if [[ "$got" != "$want" ]]; then
+            echo "$f pins Playwright ${got:-<none>}, package.json wants $want" >&2
+            ok=0
+        fi
+    done
+    if (( ! ok )); then
+        echo "Bump the image tag and its digest together, or pin the package back." >&2
+        exit 1
+    fi
+    echo "  Playwright image and package agree on $want"
 
 # npm audit reports against its own advisory database and osv-scanner against
 # OSV's; they disagree often enough on a dev-only tree to be worth the few
@@ -113,7 +151,9 @@ run:
 browsers:
     #!/usr/bin/env bash
     set -euo pipefail
-    if command -v apt-get >/dev/null 2>&1; then
+    if [[ -n "${PLAYWRIGHT_BROWSERS_PATH:-}" ]]; then
+        echo "browsers already in the image at ${PLAYWRIGHT_BROWSERS_PATH}"
+    elif command -v apt-get >/dev/null 2>&1; then
         playwright install --with-deps chromium
     else
         playwright install chromium
@@ -134,22 +174,35 @@ smoke: build browsers
         echo "port {{ preview_port }} is already in use; stop whatever is on it first" >&2
         exit 1
     fi
-    vite preview --port {{ preview_port }} --strictPort >/dev/null 2>&1 &
+    # --host 127.0.0.1 rather than vite's default of `localhost`, and an
+    # address rather than a name on the two lines below it. Node resolves
+    # `localhost` in verbatim order, so it can bind ::1 while wait-on connects
+    # to 127.0.0.1 — which is exactly what happened in a GitHub Actions
+    # container job, where the server started fine and nothing could reach it.
+    # Every sibling repository already passed --host for this reason.
+    #
+    # The log is kept rather than sent to /dev/null: when this timed out, the
+    # one thing that would have explained it had been thrown away.
+    vite preview --host 127.0.0.1 --port {{ preview_port }} --strictPort >preview.log 2>&1 &
     server=$!
     # Ignore a failed kill: the trap runs after the server has usually already
     # gone, and its failure was the last thing to touch $?, so the recipe
     # reported a smoke test that had actually passed as a failure.
     trap 'kill $server 2>/dev/null || true' EXIT
-    wait-on -t 60000 http://localhost:{{ preview_port }}/
-    node scripts/smoke.mjs http://localhost:{{ preview_port }}/ screenshots
+    if ! wait-on -t 60000 http://127.0.0.1:{{ preview_port }}/; then
+        echo "the preview server never came up; its output was:" >&2
+        cat preview.log >&2
+        exit 1
+    fi
+    node scripts/smoke.mjs http://127.0.0.1:{{ preview_port }}/ screenshots
 
 # Everything, from a clean checkout, exactly as CI runs it.
-ci: install lint security coverage build smoke
+ci: install lint lint-versions security coverage build smoke
 
 # The same gates as `ci`, minus the provisioning and the coverage pass.
 
 # Every gate, for a quick loop before pushing.
-check: lint security test build smoke
+check: lint lint-versions security test build smoke
 
 # The point of this recipe is that it proves the claim: the same `just ci`, on
 # a machine that is neither this laptop nor the runner, from the same
@@ -163,4 +216,4 @@ container:
 
 # Remove build output and installed packages.
 clean:
-    rm -rf dist node_modules screenshots coverage
+    rm -rf dist node_modules screenshots coverage preview.log

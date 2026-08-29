@@ -25,8 +25,27 @@ jobs:
       contents: read
       pages: write
       id-token: write
+
+    # The same image .devcontainer/Containerfile builds on, so the browser and
+    # the system libraries behind it are identical here and on a laptop. That is
+    # what the devcontainer was always claiming and could not deliver while this
+    # job ran on a bare runner and installed its own browser.
+    #
+    # The tag must match the `playwright` version in package.json; `just
+    # lint-versions` fails if they drift. Chromium crashes on the 64MB of
+    # /dev/shm a container gets by default.
+    container:
+      image: mcr.microsoft.com/playwright:v1.62.1-noble@sha256:dcc5531e97840b9b5e794f2814476b21571c5124a3fca2267d73041f56e7580e
+      options: --shm-size=1g
+
+    # A container job runs as root but is handed HOME=/github/home, a mount
+    # owned by the image's pwuser, and the browser refuses to start when $HOME
+    # belongs to somebody else. It also puts mise where the image expects it.
+    env:
+      HOME: /root
+
     steps:
-      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
           # The build never pushes, so leaving a credential in .git/config for
           # everything downstream to pick up buys nothing.
@@ -40,21 +59,16 @@ jobs:
       # while it was written on 26. The action caches the tools it installs and
       # exports mise's PATH to the steps below, which is what makes `just`
       # resolvable without any further setup.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c  # v4.3.0
 
-      # mise caches the tools; these cache what the tools download. Both keyed
-      # on the lockfile, because that is what decides the contents of each: the
-      # Playwright version lives in it too, so a bump invalidates the browser.
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      # mise caches the tools; this caches what npm downloads. Keyed on the
+      # lockfile, because that is what decides the contents. There is no browser
+      # cache any more: the browsers come with the image.
+      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9  # v6.1.0
         with:
           path: ~/.npm
           key: npm-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
           restore-keys: npm-${{ runner.os }}-
-      - uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.cache/ms-playwright
-          key: playwright-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
-          restore-keys: playwright-${{ runner.os }}-
 
       # Everything: install, lint, audit, test, build, and the smoke test that
       # drives the built bundle in a real browser. This is the same recipe a
@@ -69,7 +83,7 @@ jobs:
         env:
           BASE_PATH: /${{ github.event.repository.name }}/
 
-      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+      - uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a  # v7.0.1
         if: always()
         with:
           name: screenshots
@@ -81,9 +95,9 @@ jobs:
 
       # A pull request gets every check above and stops there. Only a push to
       # main produces a deployable artifact.
-      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d # v6.0.0
+      - uses: actions/configure-pages@45bfe0192ca1faeb007ade9deae92b16b8254a0d  # v6.0.0
         if: github.event_name != 'pull_request'
-      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9 # v5.0.0
+      - uses: actions/upload-pages-artifact@fc324d3547104276b827a68afc52ff2a11cc49c9  # v5.0.0
         if: github.event_name != 'pull_request'
         with:
           path: dist
@@ -101,4 +115,4 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - id: deployment
-        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128 # v5.0.0
+        uses: actions/deploy-pages@cd2ce8fcbc39b97be8ca5fce6e763baed58fa128  # v5.0.0
