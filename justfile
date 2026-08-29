@@ -174,14 +174,27 @@ smoke: build browsers
         echo "port {{ preview_port }} is already in use; stop whatever is on it first" >&2
         exit 1
     fi
-    vite preview --port {{ preview_port }} --strictPort >/dev/null 2>&1 &
+    # --host 127.0.0.1 rather than vite's default of `localhost`, and an
+    # address rather than a name on the two lines below it. Node resolves
+    # `localhost` in verbatim order, so it can bind ::1 while wait-on connects
+    # to 127.0.0.1 — which is exactly what happened in a GitHub Actions
+    # container job, where the server started fine and nothing could reach it.
+    # Every sibling repository already passed --host for this reason.
+    #
+    # The log is kept rather than sent to /dev/null: when this timed out, the
+    # one thing that would have explained it had been thrown away.
+    vite preview --host 127.0.0.1 --port {{ preview_port }} --strictPort >preview.log 2>&1 &
     server=$!
     # Ignore a failed kill: the trap runs after the server has usually already
     # gone, and its failure was the last thing to touch $?, so the recipe
     # reported a smoke test that had actually passed as a failure.
     trap 'kill $server 2>/dev/null || true' EXIT
-    wait-on -t 60000 http://localhost:{{ preview_port }}/
-    node scripts/smoke.mjs http://localhost:{{ preview_port }}/ screenshots
+    if ! wait-on -t 60000 http://127.0.0.1:{{ preview_port }}/; then
+        echo "the preview server never came up; its output was:" >&2
+        cat preview.log >&2
+        exit 1
+    fi
+    node scripts/smoke.mjs http://127.0.0.1:{{ preview_port }}/ screenshots
 
 # Everything, from a clean checkout, exactly as CI runs it.
 ci: install lint lint-versions security coverage build smoke
@@ -203,4 +216,4 @@ container:
 
 # Remove build output and installed packages.
 clean:
-    rm -rf dist node_modules screenshots coverage
+    rm -rf dist node_modules screenshots coverage preview.log
