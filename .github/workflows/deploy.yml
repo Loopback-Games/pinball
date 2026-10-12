@@ -40,7 +40,7 @@ jobs:
       # while it was written on 26. The action caches the tools it installs and
       # exports mise's PATH to the steps below, which is what makes `just`
       # resolvable without any further setup.
-      - uses: jdx/mise-action@c2a87611a18de5b3828c5652fe268e992400cb5c # v4.3.0
+      - uses: jdx/mise-action@2d8d4cafcbd33be2ea37d2b6f5ad595363d1f1ca # v5.1.1
 
       # mise caches the tools; these cache what the tools download. Both keyed
       # on the lockfile, because that is what decides the contents of each: the
